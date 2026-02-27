@@ -1,6 +1,35 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
+
+// ── Upload documenti ──────────────────────────────────────
+const DOCS_DIR = path.join(__dirname, 'uploads', 'documenti');
+if (!fs.existsSync(DOCS_DIR)) fs.mkdirSync(DOCS_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(DOCS_DIR, req.params.operaioId);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    // Preserva nome originale ma evita collisioni
+    const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_() àèéìòùÀÈÉÌÒÙ]/g, '_');
+    const ts = Date.now();
+    cb(null, `${ts}_${safe}`);
+  }
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB per file
+  fileFilter: (req, file, cb) => {
+    const allowed = ['application/pdf','image/jpeg','image/png','image/webp',
+                     'application/msword',
+                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    cb(null, allowed.includes(file.mimetype));
+  }
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -173,6 +202,63 @@ app.delete('/api/segnalazioni/:id', (req, res) => {
   db.segnalazioni = db.segnalazioni.filter(s => s.id !== req.params.id);
   writeData(db); res.json({ ok: true });
 });
+
+// ── API: Documenti operaio ────────────────────────────────
+
+// Lista documenti di un operaio
+app.get('/api/documenti/:operaioId', (req, res) => {
+  const dir = path.join(DOCS_DIR, req.params.operaioId);
+  if (!fs.existsSync(dir)) return res.json([]);
+  const files = fs.readdirSync(dir).map(filename => {
+    const filePath = path.join(dir, filename);
+    const stat = fs.statSync(filePath);
+    // Il nome originale è tutto dopo il primo underscore (es: 1234567890_documento.pdf)
+    const originalName = filename.replace(/^\d+_/, '');
+    return {
+      id: filename,
+      name: originalName,
+      size: stat.size,
+      uploadedAt: stat.mtime.toISOString(),
+      url: `/uploads/documenti/${req.params.operaioId}/${filename}`
+    };
+  }).sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+  res.json(files);
+});
+
+// Upload documento
+app.post('/api/documenti/:operaioId', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'File non valido o troppo grande (max 20MB)' });
+  const originalName = req.file.originalname.replace(/[^a-zA-Z0-9.\-_() àèéìòùÀÈÉÌÒÙ]/g, '_');
+  res.json({
+    ok: true,
+    id: req.file.filename,
+    name: originalName,
+    size: req.file.size,
+    url: `/uploads/documenti/${req.params.operaioId}/${req.file.filename}`
+  });
+});
+
+// Rinomina documento
+app.patch('/api/documenti/:operaioId/:filename', (req, res) => {
+  const dir = path.join(DOCS_DIR, req.params.operaioId);
+  const oldPath = path.join(dir, req.params.filename);
+  if (!fs.existsSync(oldPath)) return res.status(404).json({ error: 'File non trovato' });
+  const ts = req.params.filename.match(/^(\d+)_/)?.[1] || Date.now();
+  const newName = `${ts}_${(req.body.name||'documento').replace(/[^a-zA-Z0-9.\-_() àèéìòùÀÈÉÌÒÙ]/g, '_')}`;
+  fs.renameSync(oldPath, path.join(dir, newName));
+  res.json({ ok: true, id: newName, name: req.body.name });
+});
+
+// Elimina documento
+app.delete('/api/documenti/:operaioId/:filename', (req, res) => {
+  const filePath = path.join(DOCS_DIR, req.params.operaioId, req.params.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File non trovato' });
+  fs.unlinkSync(filePath);
+  res.json({ ok: true });
+});
+
+// Servi i file statici della cartella uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── Catch-all ─────────────────────────────────────────────
 app.get('*', (req, res) => {

@@ -196,9 +196,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`\n  KE·CANTIERE  →  http://localhost:${PORT}\n`);
-});
+
 
 // ── Helpers ──────────────────────────────────────────────
 function readData() {

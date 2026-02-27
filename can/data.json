@@ -1,0 +1,220 @@
+{
+  "operai": [
+    {
+      "name": "MOHAMED KHALIL ABOUELAILA ABDELRAHMAN",
+      "contratto": "cassa_edile",
+      "matr": "4",
+      "id": "w29b51fad",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "MOBARAK ABOUELELA",
+      "contratto": "cassa_edile",
+      "matr": "3",
+      "id": "w8c7334f1",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "ELSAYED OMAR SAID AHMED MOHAMED",
+      "contratto": "cassa_edile",
+      "matr": "27",
+      "id": "wa4d5159f",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "CASSINELLI GIANMARIO",
+      "contratto": "cassa_edile",
+      "matr": "13",
+      "id": "w8cdf3a4c",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "FATHY ESMAEIL EL FAYOUMY HAITHM",
+      "contratto": "cassa_edile",
+      "matr": "",
+      "id": "w36253b39",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "MANNINO DANIELA MARTINA",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "wacd0d187",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "CAPELLETTI MASSIMO",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "w43517b7d",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "DI DONATO MARINA ALEJANDRA",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "w6f5b326a",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "CAPELLETTI PATRIZIO",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "w24702665",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "STURNIOLO CARMELO",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "wa4317b06",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "DI MARZO ROBERTO",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "w6840596f",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "CAPELLETTI ANGELO",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "wf24af670",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "TRABELSI WALID",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "we3178f0a",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "ZANOLI ALESSANDRA",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "w1a2d3cdc",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "CESANA DANILO",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "w0500b7f8",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "KORRI ALBAN",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "wb9e07fee",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "OLDONI MATTIA",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "w3e3b9025",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "EL MOURITHE SOULIMANE",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "w1e830dec",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    },
+    {
+      "name": "ALA HAMROUNI",
+      "contratto": "metalmeccanico",
+      "matr": "",
+      "id": "w93c58b31",
+      "mansione": "",
+      "tel": "",
+      "cantiereDefault": "",
+      "stato": "attivo"
+    }
+  ],
+  "cantieri": [
+    {
+      "id": "c001",
+      "name": "Rozzano",
+      "indirizzo": "",
+      "stato": "attivo",
+      "note": ""
+    },
+    {
+      "id": "c002",
+      "name": "Sesto San Giovanni",
+      "indirizzo": "",
+      "stato": "attivo",
+      "note": ""
+    },
+    {
+      "id": "c003",
+      "name": "Via Tofano",
+      "indirizzo": "",
+      "stato": "attivo",
+      "note": ""
+    }
+  ],
+  "giornate": [],
+  "registrazioni": [],
+  "segnalazioni": []
+}

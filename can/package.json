@@ -1,0 +1,16 @@
+{
+  "name": "ke-cantiere",
+  "version": "1.0.0",
+  "description": "Gestione cantiere KE",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.22.1",
+    "exceljs": "^4.4.0",
+    "xlsx": "^0.18.5",
+    "multer": "^1.4.5-lts.1"
+  }
+}

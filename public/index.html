@@ -1303,20 +1303,33 @@ function hashPwd(pwd) {
   return btoa(r);
 }
 
+const DEFAULT_USERS = [
+  { username: 'admin', password: hashPwd('admin123'), role: 'admin' },
+  { username: 'cantiere', password: hashPwd('cantiere'), role: 'user' }
+];
+
+// Carica utenti SEMPRE dal server (fonte di verità unica)
+async function fetchUsersFromServer() {
+  try {
+    const r = await fetch('/api/users');
+    if (!r.ok) return DEFAULT_USERS;
+    const users = await r.json();
+    return (users && users.length > 0) ? users : DEFAULT_USERS;
+  } catch(e) {
+    return DEFAULT_USERS;
+  }
+}
+
 function getUsers() {
-  const def = [
-    { username: 'admin', password: hashPwd('admin123'), role: 'admin' },
-    { username: 'cantiere', password: hashPwd('cantiere'), role: 'user' }
-  ];
+  // Usato solo per la gestione utenti in-memory dopo il login
   try {
     const stored = localStorage.getItem('ke_users');
-    return stored ? JSON.parse(stored) : def;
-  } catch { return def; }
+    return stored ? JSON.parse(stored) : DEFAULT_USERS;
+  } catch { return DEFAULT_USERS; }
 }
 
 function saveUsers(users) {
   localStorage.setItem('ke_users', JSON.stringify(users));
-  // Sync utenti col server (condivisi tra dispositivi)
   fetch('/api/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1324,16 +1337,9 @@ function saveUsers(users) {
   }).catch(() => {});
 }
 
-// Carica utenti dal server all'avvio
 async function syncUsersFromServer() {
-  try {
-    const r = await fetch('/api/users');
-    if (!r.ok) return;
-    const users = await r.json();
-    if (users && users.length > 0) {
-      localStorage.setItem('ke_users', JSON.stringify(users));
-    }
-  } catch(e) {}
+  const users = await fetchUsersFromServer();
+  localStorage.setItem('ke_users', JSON.stringify(users));
 }
 
 let currentUser = null;
@@ -1343,8 +1349,20 @@ async function doLogin() {
   const password = document.getElementById('login-password').value;
   const remember = document.getElementById('remember-me').checked;
   const err = document.getElementById('login-error');
+  const btn = document.querySelector('.login-btn');
 
-  const users = getUsers();
+  // Disabilita bottone durante il fetch
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  // Carica sempre gli utenti dal server (funziona su qualsiasi dispositivo)
+  const users = await fetchUsersFromServer();
+  // Aggiorna cache locale
+  localStorage.setItem('ke_users', JSON.stringify(users));
+
+  btn.disabled = false;
+  btn.textContent = 'Entra →';
+
   const user = users.find(u => u.username === username && u.password === hashPwd(password));
 
   if (!user) {
@@ -1358,7 +1376,6 @@ async function doLogin() {
   currentUser = user;
   sessionStorage.setItem('ke_session', JSON.stringify({ username: user.username, role: user.role }));
 
-  // Ricorda credenziali: salva username in localStorage (la password MAI in chiaro)
   if (remember) {
     localStorage.setItem('ke_remember_user', username);
   } else {

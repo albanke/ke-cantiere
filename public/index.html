@@ -723,7 +723,7 @@
   }
   .cantiere-name-link:hover { color: var(--amber); }
 </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 </head>
 <body>
 
@@ -1828,15 +1828,260 @@ function esportaExcelOperai() {
 
   const [year, month] = monthVal.split('-').map(Number);
   const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
-
   const daysInMonth = new Date(year, month, 0).getDate();
   const allDays = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = String(i + 1).padStart(2, '0');
-    return `${year}-${String(month).padStart(2, '0')}-${d}`;
+    return `${year}-${String(month).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`;
   });
+  function getDow(ds) { return new Date(ds + 'T00:00:00').getDay(); }
+  const DOW = ['D','L','M','Me','G','V','S'];
 
-  // Calcola il giorno della settimana per ogni data (0=Dom, 1=Lun…)
-  function getDow(dateStr) { return new Date(dateStr + 'T00:00:00').getDay(); }
+  const operaiAttivi = db.operai.filter(o => o.stato === 'attivo');
+  const edili = operaiAttivi.filter(o => o.contratto === 'cassa_edile');
+  const metalmeccanici = operaiAttivi.filter(o => o.contratto === 'metalmeccanico');
+
+  // ─── HELPER STILI ───
+  function makeCell(v, fillRgb, colorRgb, bold, alignH, sz) {
+    const t = typeof v === 'number' ? 'n' : 's';
+    return {
+      v: v === undefined || v === null ? '' : v,
+      t,
+      s: {
+        fill: fillRgb ? { patternType:'solid', fgColor:{ rgb: fillRgb } } : { patternType:'none' },
+        font: { name:'Calibri', sz: sz||10, bold: !!bold, color:{ rgb: colorRgb||'1A1A1A' } },
+        alignment: { horizontal: alignH||'center', vertical:'center' },
+        border: {
+          top:   { style:'thin', color:{rgb:'BBBBBB'} },
+          bottom:{ style:'thin', color:{rgb:'BBBBBB'} },
+          left:  { style:'thin', color:{rgb:'BBBBBB'} },
+          right: { style:'thin', color:{rgb:'BBBBBB'} },
+        }
+      }
+    };
+  }
+
+  function setCell(ws, r, c, v, fillRgb, colorRgb, bold, alignH, sz) {
+    const addr = XLSX.utils.encode_cell({r, c});
+    ws[addr] = makeCell(v, fillRgb, colorRgb, bold, alignH, sz);
+    if (!ws['!ref']) ws['!ref'] = addr;
+    // aggiorna ref
+    const ref = XLSX.utils.decode_range(ws['!ref']);
+    if (r < ref.s.r) ref.s.r = r;
+    if (c < ref.s.c) ref.s.c = c;
+    if (r > ref.e.r) ref.e.r = r;
+    if (c > ref.e.c) ref.e.c = c;
+    ws['!ref'] = XLSX.utils.encode_range(ref);
+  }
+
+  // ══════════════════════════════════════════════════
+  //  FOGLIO SINTESI
+  // ══════════════════════════════════════════════════
+  function buildSintesi() {
+    const ws = {};
+    ws['!merges'] = [];
+    ws['!rows'] = [];
+    ws['!cols'] = [];
+
+    const lista = [
+      ...edili.map(o => ({...o, _tipo:'Cassa Edile'})),
+      ...metalmeccanici.map(o => ({...o, _tipo:'Metalmeccanico'}))
+    ];
+
+    const headers = ['Matr.','Nome','Contratto','Mansione','GG Pres.','GG Ass.','Ore Ord.','Straord.','Ore Tot.'];
+    const nC = headers.length;
+
+    // Riga 0: titolo
+    ws['!merges'].push({ s:{r:0,c:0}, e:{r:0,c:nC-1} });
+    setCell(ws, 0, 0, `KE CANTIERE — PRESENZE ${monthLabel.toUpperCase()}`, '0D5C2E', 'FFFFFF', true, 'center', 14);
+    for (let c=1; c<nC; c++) setCell(ws, 0, c, '', '0D5C2E', 'FFFFFF', false, 'center', 14);
+
+    // Riga 1: sottotitolo
+    ws['!merges'].push({ s:{r:1,c:0}, e:{r:1,c:nC-1} });
+    setCell(ws, 1, 0, `Esportato il ${new Date().toLocaleDateString('it-IT')}`, '1A7A3C', 'CCFFDD', false, 'center', 10);
+    for (let c=1; c<nC; c++) setCell(ws, 1, c, '', '1A7A3C', 'CCFFDD', false, 'center', 10);
+
+    // Riga 2: spazio
+    for (let c=0; c<nC; c++) setCell(ws, 2, c, '', 'F5F5F5', 'F5F5F5', false, 'center', 6);
+
+    // Riga 3: header
+    const hColors = ['EEEEEE','EEEEEE','EEEEEE','EEEEEE','1A7A3C','1A7A3C','1A7A3C','1A7A3C','0D5C2E'];
+    const hTextColors = ['555555','555555','555555','555555','FFFFFF','FFFFFF','FFFFFF','FFFFFF','FFFFFF'];
+    headers.forEach((h, c) => setCell(ws, 3, c, h, hColors[c], hTextColors[c], true, c < 2 ? 'left' : 'center', 11));
+
+    // Dati operai
+    let totGGP=0, totGGA=0, totOreO=0, totStr=0;
+    lista.forEach((o, i) => {
+      const r = 4 + i;
+      const giornate = db.giornate.filter(g => g.operaio === o.id && g.data.startsWith(monthVal));
+      const presenti = giornate.filter(g => g.presente);
+      const assenti = giornate.filter(g => !g.presente);
+      const oreOrd = presenti.reduce((a,g) => a+(g.ore||0), 0);
+      const oreStraord = presenti.reduce((a,g) => a+(g.straordinari||0), 0);
+      totGGP += presenti.length; totGGA += assenti.length;
+      totOreO += oreOrd; totStr += oreStraord;
+
+      const isCE = o.contratto === 'cassa_edile';
+      const bg = i%2===0 ? 'F4FBF7' : 'FFFFFF';
+      const bgNum = i%2===0 ? 'EAF7EF' : 'F4FBF7';
+      setCell(ws, r, 0, o.matr||'', bg, '888888', false, 'center', 10);
+      setCell(ws, r, 1, titleCase(o.name), bg, '111111', true, 'left', 11);
+      setCell(ws, r, 2, o._tipo, bg, isCE ? '1A7A3C' : '1E40AF', true, 'left', 10);
+      setCell(ws, r, 3, o.mansione||'', bg, '666666', false, 'left', 10);
+      setCell(ws, r, 4, presenti.length, bgNum, presenti.length>0?'155724':'888888', presenti.length>0, 'center', 10);
+      setCell(ws, r, 5, assenti.length, bgNum, assenti.length>0?'B71C1C':'888888', assenti.length>0, 'center', 10);
+      setCell(ws, r, 6, oreOrd, bgNum, '0D5C2E', oreOrd>0, 'center', 10);
+      setCell(ws, r, 7, oreStraord, bgNum, oreStraord>0?'B45309':'888888', oreStraord>0, 'center', 10);
+      setCell(ws, r, 8, oreOrd+oreStraord, bgNum, '0D5C2E', true, 'center', 11);
+    });
+
+    // Riga totale
+    const rTot = 4 + lista.length;
+    setCell(ws, rTot, 0, '', '0D5C2E', 'FFFFFF', true, 'center', 10);
+    setCell(ws, rTot, 1, 'TOTALE', '0D5C2E', 'FFFFFF', true, 'left', 11);
+    setCell(ws, rTot, 2, '', '0D5C2E', 'FFFFFF', true, 'center', 10);
+    setCell(ws, rTot, 3, '', '0D5C2E', 'FFFFFF', true, 'center', 10);
+    setCell(ws, rTot, 4, totGGP, '0D5C2E', 'AAFFD0', true, 'center', 11);
+    setCell(ws, rTot, 5, totGGA, '0D5C2E', 'FFB3B3', true, 'center', 11);
+    setCell(ws, rTot, 6, totOreO, '0D5C2E', 'AAFFD0', true, 'center', 11);
+    setCell(ws, rTot, 7, totStr, '0D5C2E', totStr>0?'FFD580':'AAFFD0', true, 'center', 11);
+    setCell(ws, rTot, 8, totOreO+totStr, '0A4A24', 'FFFFFF', true, 'center', 12);
+
+    ws['!rows'] = [{hpt:30},{hpt:18},{hpt:8},{hpt:24}];
+    for (let i=0; i<lista.length+1; i++) ws['!rows'].push({hpt:20});
+    ws['!cols'] = [{wch:7},{wch:32},{wch:16},{wch:18},{wch:11},{wch:11},{wch:12},{wch:12},{wch:11}];
+    return ws;
+  }
+
+  // ══════════════════════════════════════════════════
+  //  FOGLIO DETTAGLIO GIORNALIERO
+  // ══════════════════════════════════════════════════
+  function buildDettaglio(lista, tipoLabel) {
+    const ws = {};
+    ws['!merges'] = [];
+    ws['!rows'] = [];
+
+    const fixedN = 3; // Matr, Nome, Mans
+    const summN = 5;  // P, A, Ore, St, Tot
+    const nC = fixedN + daysInMonth + summN;
+
+    // Riga 0: titolo
+    ws['!merges'].push({ s:{r:0,c:0}, e:{r:0,c:nC-1} });
+    setCell(ws, 0, 0, `KE CANTIERE — ${tipoLabel.toUpperCase()} — ${monthLabel.toUpperCase()}`, '0D5C2E','FFFFFF',true,'center',13);
+    for (let c=1; c<nC; c++) setCell(ws, 0, c,'','0D5C2E','FFFFFF',false,'center',13);
+
+    // Riga 1: giorni della settimana
+    setCell(ws, 1, 0,'','1E1E1E','AAAAAA',false,'center',8);
+    setCell(ws, 1, 1,'','1E1E1E','AAAAAA',false,'center',8);
+    setCell(ws, 1, 2,'','1E1E1E','AAAAAA',false,'center',8);
+    for (let i=0; i<daysInMonth; i++) {
+      const dow = getDow(allDays[i]);
+      const isWe = dow===0||dow===6;
+      setCell(ws, 1, fixedN+i, DOW[dow], isWe?'5C1A1A':'1E1E1E', isWe?'FF9999':'999999', true, 'center', 8);
+    }
+    for (let i=0; i<summN; i++) setCell(ws, 1, fixedN+daysInMonth+i,'','0D5C2E','AAFFD0',true,'center',8);
+
+    // Riga 2: header colonne
+    setCell(ws, 2, 0,'Matr.','1A7A3C','FFFFFF',true,'center',10);
+    setCell(ws, 2, 1,'Nome','1A7A3C','FFFFFF',true,'left',11);
+    setCell(ws, 2, 2,'Mans.','1A7A3C','FFFFFF',true,'left',10);
+    for (let i=0; i<daysInMonth; i++) {
+      const dow = getDow(allDays[i]);
+      const isWe = dow===0||dow===6;
+      setCell(ws, 2, fixedN+i, i+1, isWe?'6B2121':'1A7A3C','FFFFFF',true,'center',9);
+    }
+    const summLabels=['P','A','Ore','St.','Tot.'];
+    const summColors=['1A7A3C','B71C1C','0D5C2E','B45309','0A4A24'];
+    summLabels.forEach((lb,i) => setCell(ws, 2, fixedN+daysInMonth+i, lb, summColors[i],'FFFFFF',true,'center',10));
+
+    // Dati operai
+    const totByDay = new Array(daysInMonth).fill(0);
+    let totP=0,totA=0,totOreO=0,totStr=0;
+
+    lista.forEach((o, oi) => {
+      const r = 3 + oi;
+      const giornate = db.giornate.filter(g => g.operaio===o.id && g.data.startsWith(monthVal));
+      const gg = {};
+      giornate.forEach(g => { gg[g.data]=g; });
+
+      let ggPres=0,ggAss=0,oreOrd=0,oreStraord=0;
+      const bg = oi%2===0?'F9FFFE':'FFFFFF';
+      const bgS = oi%2===0?'EAF7EF':'F4FBF7';
+
+      setCell(ws, r, 0, o.matr||'', bg,'999999',false,'center',9);
+      setCell(ws, r, 1, titleCase(o.name), bg,'111111',true,'left',11);
+      setCell(ws, r, 2, o.mansione||'', bg,'666666',false,'left',9);
+
+      for (let i=0; i<daysInMonth; i++) {
+        const d = allDays[i];
+        const g = gg[d];
+        const dow = getDow(d);
+        const isWe = dow===0||dow===6;
+
+        if (!g) {
+          setCell(ws, r, fixedN+i, '', isWe?'F0E0E0':'F5F5F5', isWe?'DDAAAA':'DDDDDD', false,'center',9);
+        } else if (g.presente) {
+          const h = (g.ore||0)+(g.straordinari||0);
+          ggPres++; oreOrd+=g.ore||0; oreStraord+=g.straordinari||0;
+          totByDay[i]+=h;
+          setCell(ws, r, fixedN+i, h, 'D4EDDA','155724',true,'center',10);
+        } else {
+          ggAss++;
+          const m=(g.motivoTipo||'A').substring(0,1).toUpperCase();
+          setCell(ws, r, fixedN+i, m,'FDECEA','B71C1C',true,'center',9);
+        }
+      }
+
+      totP+=ggPres; totA+=ggAss; totOreO+=oreOrd; totStr+=oreStraord;
+      setCell(ws, r, fixedN+daysInMonth+0, ggPres, bgS, ggPres>0?'155724':'888888',ggPres>0,'center',10);
+      setCell(ws, r, fixedN+daysInMonth+1, ggAss,  bgS, ggAss>0?'B71C1C':'888888',ggAss>0,'center',10);
+      setCell(ws, r, fixedN+daysInMonth+2, oreOrd, bgS,'0D5C2E',oreOrd>0,'center',10);
+      setCell(ws, r, fixedN+daysInMonth+3, oreStraord, bgS, oreStraord>0?'B45309':'888888',oreStraord>0,'center',10);
+      setCell(ws, r, fixedN+daysInMonth+4, oreOrd+oreStraord, bgS,'0D5C2E',true,'center',11);
+    });
+
+    // Riga totale
+    const rTot = 3 + lista.length;
+    setCell(ws, rTot, 0, '','0D5C2E','FFFFFF',true,'center',10);
+    setCell(ws, rTot, 1, 'TOTALE','0D5C2E','FFFFFF',true,'left',11);
+    setCell(ws, rTot, 2, '','0D5C2E','FFFFFF',true,'center',10);
+    for (let i=0; i<daysInMonth; i++) {
+      const v = totByDay[i];
+      setCell(ws, rTot, fixedN+i, v>0?v:'','0D5C2E', v>0?'AAFFD0':'5A8A6A',v>0,'center',10);
+    }
+    setCell(ws, rTot, fixedN+daysInMonth+0, totP, '0A4A24','AAFFD0',true,'center',11);
+    setCell(ws, rTot, fixedN+daysInMonth+1, totA, '0A4A24','FFB3B3',true,'center',11);
+    setCell(ws, rTot, fixedN+daysInMonth+2, totOreO,'0A4A24','AAFFD0',true,'center',11);
+    setCell(ws, rTot, fixedN+daysInMonth+3, totStr,'0A4A24',totStr>0?'FFD580':'AAFFD0',true,'center',11);
+    setCell(ws, rTot, fixedN+daysInMonth+4, totOreO+totStr,'071F10','FFFFFF',true,'center',12);
+
+    // Altezze e larghezze
+    ws['!rows'] = [{hpt:28},{hpt:14},{hpt:22}];
+    for (let i=0; i<lista.length+1; i++) ws['!rows'].push({hpt:19});
+    ws['!cols'] = [
+      {wch:6},{wch:28},{wch:12},
+      ...allDays.map(() => ({wch:4})),
+      {wch:5},{wch:5},{wch:7},{wch:5},{wch:7}
+    ];
+
+    // ref finale
+    ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:3+lista.length, c:nC-1} });
+
+    return ws;
+  }
+
+  // ── COMPONI WORKBOOK ──
+  const wb = XLSX.utils.book_new();
+  wb.Props = { Title: `Presenze ${monthLabel}`, Author: 'KE Cantiere' };
+
+  const wsSintesi = buildSintesi();
+  wsSintesi['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:4+operaiAttivi.length, c:8} });
+  XLSX.utils.book_append_sheet(wb, wsSintesi, 'Sintesi');
+  XLSX.utils.book_append_sheet(wb, buildDettaglio(edili, 'Cassa Edile'), 'Cassa Edile');
+  XLSX.utils.book_append_sheet(wb, buildDettaglio(metalmeccanici, 'Metalmeccanico'), 'Metalmeccanico');
+
+  const filename = `Presenze_${monthVal.replace('-','_')}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast(`✓ Export ${filename}`);
+}
 
   const operaiAttivi = db.operai.filter(o => o.stato === 'attivo');
   const edili = operaiAttivi.filter(o => o.contratto === 'cassa_edile');

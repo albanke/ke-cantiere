@@ -543,11 +543,61 @@
   .empty-text { font-family: 'Barlow Condensed', sans-serif; font-size: 18px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
 
   @media (max-width: 768px) {
-    main { padding: 1rem; }
+    main { padding: 0.75rem; }
     .dash-grid { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
     .presenze-grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .cantiere-cards { grid-template-columns: 1fr; }
     nav button span:not(.icon) { display: none; }
+    .page-title { font-size: 28px; }
+    .page-header { flex-wrap: wrap; gap: 12px; }
+    .page-header .btn { width: 100%; justify-content: center; }
+    .presenza-toolbar { flex-wrap: wrap; gap: 8px; }
+    .presenza-toolbar > * { width: 100%; }
+    .presenza-toolbar > div { margin-left: 0 !important; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { min-width: 600px; }
+    .table-toolbar { flex-wrap: wrap; gap: 8px; }
+    .table-toolbar > * { width: 100%; }
+    .search-box input { width: 100%; }
+    .form-actions { flex-direction: column-reverse; }
+    .form-actions .btn { width: 100%; justify-content: center; }
+  }
+
+  @media (max-width: 640px) {
+    header {
+      flex-wrap: wrap;
+      height: auto;
+      padding: 0 1rem;
+      gap: 0;
+    }
+    .logo { padding: 10px 0 0 0; }
+    nav {
+      order: 3;
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      gap: 0;
+      border-top: 1px solid var(--border);
+    }
+    nav::-webkit-scrollbar { display: none; }
+    nav button {
+      padding: 0 14px;
+      height: 44px;
+      flex-shrink: 0;
+    }
+    .header-right {
+      padding: 8px 0;
+    }
+    .date-chip { display: none; }
+    main { padding: 0.5rem; }
+    .modal { width: 98vw !important; max-width: 98vw !important; }
+    .modal-body { padding: 1rem; }
+    .modal-header { padding: 1rem; }
+    .op-card-top { flex-wrap: wrap; }
+    .pres-toggle { flex-wrap: nowrap; }
   }
 
   .toast {
@@ -624,6 +674,54 @@
   .cd-entry-meta { font-size:12px; color:var(--muted); text-align:right; }
   .cd-entry-autore { font-family:'Barlow Condensed',sans-serif; font-size:14px; font-weight:700; color:var(--amber); }
   .cd-entry-desc { font-size:14px; color:var(--light); line-height:1.6; margin-bottom:10px; }
+
+  /* ─── RENDICONTO OPERAIO / CANTIERE ─── */
+  .rend-header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+  }
+  .rend-stat-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px; margin-bottom: 1.5rem;
+  }
+  .rend-stat {
+    background: var(--plate); border: 1px solid var(--border);
+    padding: 12px 14px; text-align: center;
+  }
+  .rend-stat-num {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 32px; font-weight: 900; color: var(--white); line-height: 1;
+  }
+  .rend-stat-num.green { color: var(--green); }
+  .rend-stat-num.amber { color: var(--amber); }
+  .rend-stat-num.red { color: var(--red); }
+  .rend-stat-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); margin-top: 4px;
+  }
+  .rend-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .rend-table th {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); padding: 8px 12px; text-align: left;
+    border-bottom: 1px solid var(--border); background: var(--steel);
+  }
+  .rend-table td {
+    padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--light);
+  }
+  .rend-table tr:last-child td { border-bottom: none; }
+  .rend-table tr:hover td { background: rgba(34,197,94,0.04); }
+  .operaio-name-link {
+    cursor: pointer; color: var(--white); transition: color 0.15s;
+  }
+  .operaio-name-link:hover { color: var(--amber); text-decoration: underline; }
+  .cantiere-name-link {
+    cursor: pointer; font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px; font-weight: 700; color: var(--white);
+    margin-bottom: 8px; transition: color 0.15s;
+  }
+  .cantiere-name-link:hover { color: var(--amber); }
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -1038,6 +1136,83 @@
     </div>
     <div class="modal-body">
       <div id="cantiere-detail-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL RENDICONTO OPERAIO ═══ -->
+<div class="modal-overlay" id="modal-rendiconto-operaio">
+  <div class="modal" style="max-width:820px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <div class="modal-title" id="rend-op-title">Resoconto Operaio</div>
+      <button class="modal-close" onclick="closeModal('modal-rendiconto-operaio')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="rend-header">
+        <div>
+          <label style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px">Mese</label>
+          <input type="month" id="rend-op-month" onchange="aggiornaRendicontoOperaio()" style="background:var(--plate);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:13px;outline:none">
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end">
+          <button class="btn btn-ghost btn-sm" onclick="rendMesePrec()">← Prec.</button>
+          <button class="btn btn-ghost btn-sm" onclick="rendMeseSucc()">Succ. →</button>
+        </div>
+      </div>
+      <div class="rend-stat-row" id="rend-op-stats"></div>
+      <div style="overflow-x:auto">
+        <table class="rend-table">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Stato</th>
+              <th>Ore Ord.</th>
+              <th>Straord.</th>
+              <th>Ore Tot.</th>
+              <th>Cantiere</th>
+            </tr>
+          </thead>
+          <tbody id="rend-op-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL RENDICONTO CANTIERE ═══ -->
+<div class="modal-overlay" id="modal-rendiconto-cantiere">
+  <div class="modal" style="max-width:820px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <div class="modal-title" id="rend-cant-title">Resoconto Cantiere</div>
+      <button class="modal-close" onclick="closeModal('modal-rendiconto-cantiere')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="rend-header">
+        <div>
+          <label style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px">Mese</label>
+          <input type="month" id="rend-cant-month" onchange="aggiornaRendicontoCantiere()" style="background:var(--plate);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:13px;outline:none">
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end">
+          <button class="btn btn-ghost btn-sm" onclick="rendCantMesePrec()">← Prec.</button>
+          <button class="btn btn-ghost btn-sm" onclick="rendCantMeseSucc()">Succ. →</button>
+        </div>
+      </div>
+      <div class="rend-stat-row" id="rend-cant-stats"></div>
+      <div style="overflow-x:auto">
+        <table class="rend-table">
+          <thead>
+            <tr>
+              <th>Operaio</th>
+              <th>Contratto</th>
+              <th>GG Pres.</th>
+              <th>GG Ass.</th>
+              <th>Ore Ord.</th>
+              <th>Straord.</th>
+              <th>Ore Tot.</th>
+            </tr>
+          </thead>
+          <tbody id="rend-cant-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
@@ -1490,12 +1665,13 @@ function renderOperai() {
   document.getElementById('operai-tbody').innerHTML = lista.map(o => `
     <tr>
       <td><div class="matr">${o.matr || '—'}</div></td>
-      <td style="font-weight:500;color:var(--white)">${titleCase(o.name)}</td>
+      <td><span class="operaio-name-link" onclick="apriRendicontoOperaio('${o.id}')">${titleCase(o.name)}</span></td>
       <td><span class="badge badge-${o.contratto === 'cassa_edile' ? 'amber' : 'blue'}">${o.contratto === 'cassa_edile' ? 'Cassa Edile' : 'Metalmeccanico'}</span></td>
       <td style="color:var(--muted)">${o.mansione || '—'}</td>
       <td style="color:var(--muted)">${o.tel || '—'}</td>
       <td><span class="badge badge-${o.stato === 'attivo' ? 'green' : 'red'}">${o.stato}</span></td>
       <td style="display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick="apriRendicontoOperaio('${o.id}')">📋</button>
         <button class="btn btn-ghost btn-sm" onclick="openModalOperaio('${o.id}')">Modifica</button>
         <button class="btn btn-sm" style="background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.3)" onclick="eliminaOperaio('${o.id}','${o.name}')">Elimina</button>
       </td>
@@ -1567,7 +1743,7 @@ function renderCantieri() {
     return `
     <div class="cantiere-card" style="cursor:default">
       <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
-        <div class="cantiere-name" style="cursor:pointer" onclick="openModalCantiere('${c.id}')">${c.name}</div>
+        <div class="cantiere-name-link" onclick="apriRendicontoCantiere('${c.id}')">${c.name}</div>
         <span class="badge badge-${c.stato === 'attivo' ? 'green' : c.stato === 'sospeso' ? 'amber' : 'blue'}">${c.stato}</span>
       </div>
       <div class="cantiere-meta">${c.indirizzo || 'Indirizzo da definire'}</div>
@@ -1576,6 +1752,9 @@ function renderCantieri() {
         <button class="btn btn-ghost btn-sm" onclick="openModalCantiere('${c.id}')">✏ Modifica</button>
         <button class="btn btn-sm" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:var(--green)" onclick="openDettaglioCantiere('${c.id}')">
           📷 Diario ${nDiari > 0 ? `<span style="background:var(--amber);color:#000;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px">${nDiari}</span>` : ''}
+        </button>
+        <button class="btn btn-sm" style="background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);color:var(--blue)" onclick="apriRendicontoCantiere('${c.id}')">
+          📋 Resoconto
         </button>
       </div>
     </div>
@@ -2343,6 +2522,162 @@ function openDettaglioCantiere(id) {
     }).join('');
   }
   document.getElementById('modal-cantiere-detail').classList.add('open');
+}
+
+// ══════════════════════════════════════════
+//  RENDICONTO OPERAIO
+// ══════════════════════════════════════════
+let rendOpId = null;
+let rendCantId = null;
+
+function currMonthVal() {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
+}
+
+function apriRendicontoOperaio(id) {
+  rendOpId = id;
+  const o = db.operai.find(x => x.id === id);
+  if (!o) return;
+  document.getElementById('rend-op-title').textContent = '📋 ' + titleCase(o.name);
+  document.getElementById('rend-op-month').value = currMonthVal();
+  aggiornaRendicontoOperaio();
+  document.getElementById('modal-rendiconto-operaio').classList.add('open');
+}
+
+function rendMesePrec() {
+  const el = document.getElementById('rend-op-month');
+  const [y, m] = el.value.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  aggiornaRendicontoOperaio();
+}
+function rendMeseSucc() {
+  const el = document.getElementById('rend-op-month');
+  const [y, m] = el.value.split('-').map(Number);
+  const d = new Date(y, m, 1);
+  el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  aggiornaRendicontoOperaio();
+}
+
+function aggiornaRendicontoOperaio() {
+  const mese = document.getElementById('rend-op-month').value;
+  if (!mese || !rendOpId) return;
+  const giornate = db.giornate.filter(g => g.operaio === rendOpId && g.data.startsWith(mese));
+  const presenti = giornate.filter(g => g.presente);
+  const assenti = giornate.filter(g => !g.presente);
+  const oreOrd = presenti.reduce((a, g) => a + (g.ore||0), 0);
+  const oreStraord = presenti.reduce((a, g) => a + (g.straordinari||0), 0);
+
+  document.getElementById('rend-op-stats').innerHTML = `
+    <div class="rend-stat"><div class="rend-stat-num green">${presenti.length}</div><div class="rend-stat-label">GG Presenti</div></div>
+    <div class="rend-stat"><div class="rend-stat-num red">${assenti.length}</div><div class="rend-stat-label">GG Assenti</div></div>
+    <div class="rend-stat"><div class="rend-stat-num">${oreOrd}</div><div class="rend-stat-label">Ore Ord.</div></div>
+    <div class="rend-stat"><div class="rend-stat-num amber">${oreStraord}</div><div class="rend-stat-label">Straord.</div></div>
+    <div class="rend-stat"><div class="rend-stat-num">${oreOrd + oreStraord}</div><div class="rend-stat-label">Ore Totali</div></div>
+  `;
+
+  if (!giornate.length) {
+    document.getElementById('rend-op-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">Nessuna giornata registrata per questo mese.</td></tr>`;
+    return;
+  }
+
+  const sortedGiornate = [...giornate].sort((a, b) => a.data.localeCompare(b.data));
+  document.getElementById('rend-op-tbody').innerHTML = sortedGiornate.map(g => {
+    const dateLabel = new Date(g.data + 'T00:00:00').toLocaleDateString('it-IT', { weekday:'short', day:'numeric', month:'short' });
+    const cant = db.cantieri.find(c => c.id === g.cantiere);
+    const cantNome = cant ? cant.name : '—';
+    if (g.presente) {
+      const oreT = (g.ore||0) + (g.straordinari||0);
+      return `<tr>
+        <td>${dateLabel}</td>
+        <td><span class="badge badge-green">Presente</span></td>
+        <td>${g.ore||0}</td>
+        <td>${g.straordinari||0}</td>
+        <td style="font-weight:600;color:var(--white)">${oreT}</td>
+        <td>${cantNome}</td>
+      </tr>`;
+    } else {
+      const motivo = g.motivoTipo ? g.motivoTipo.charAt(0).toUpperCase() + g.motivoTipo.slice(1) : 'Assente';
+      return `<tr>
+        <td>${dateLabel}</td>
+        <td><span class="badge badge-red">${motivo}</span></td>
+        <td>—</td><td>—</td><td>—</td>
+        <td>—</td>
+      </tr>`;
+    }
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+//  RENDICONTO CANTIERE
+// ══════════════════════════════════════════
+function apriRendicontoCantiere(id) {
+  rendCantId = id;
+  const c = db.cantieri.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('rend-cant-title').textContent = '📋 ' + c.name;
+  document.getElementById('rend-cant-month').value = currMonthVal();
+  aggiornaRendicontoCantiere();
+  document.getElementById('modal-rendiconto-cantiere').classList.add('open');
+}
+
+function rendCantMesePrec() {
+  const el = document.getElementById('rend-cant-month');
+  const [y, m] = el.value.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  aggiornaRendicontoCantiere();
+}
+function rendCantMeseSucc() {
+  const el = document.getElementById('rend-cant-month');
+  const [y, m] = el.value.split('-').map(Number);
+  const d = new Date(y, m, 1);
+  el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  aggiornaRendicontoCantiere();
+}
+
+function aggiornaRendicontoCantiere() {
+  const mese = document.getElementById('rend-cant-month').value;
+  if (!mese || !rendCantId) return;
+
+  const giornateDelCantiere = db.giornate.filter(g => g.cantiere === rendCantId && g.data.startsWith(mese) && g.presente);
+  const operaiCoinvolti = [...new Set(giornateDelCantiere.map(g => g.operaio))];
+
+  let totGGPres = 0, totOreOrd = 0, totStraord = 0;
+
+  const righe = operaiCoinvolti.map(opId => {
+    const op = db.operai.find(o => o.id === opId);
+    const giornateOp = giornateDelCantiere.filter(g => g.operaio === opId);
+    const gg = giornateOp.length;
+    const oreOrd = giornateOp.reduce((a, g) => a + (g.ore||0), 0);
+    const oreStraord = giornateOp.reduce((a, g) => a + (g.straordinari||0), 0);
+    totGGPres += gg; totOreOrd += oreOrd; totStraord += oreStraord;
+    // contiamo anche le assenze per questo cantiere? no, le assenze non hanno cantiere
+    const contratto = op ? (op.contratto === 'cassa_edile' ? 'Cassa Edile' : 'Metalmeccanico') : '—';
+    const badgeClass = op?.contratto === 'cassa_edile' ? 'badge-amber' : 'badge-blue';
+    return `<tr>
+      <td style="font-weight:500;color:var(--white)">${op ? titleCase(op.name) : opId}</td>
+      <td><span class="badge ${badgeClass}">${contratto}</span></td>
+      <td>${gg}</td>
+      <td>—</td>
+      <td>${oreOrd}</td>
+      <td>${oreStraord}</td>
+      <td style="font-weight:600;color:var(--white)">${oreOrd + oreStraord}</td>
+    </tr>`;
+  });
+
+  document.getElementById('rend-cant-stats').innerHTML = `
+    <div class="rend-stat"><div class="rend-stat-num green">${operaiCoinvolti.length}</div><div class="rend-stat-label">Operai</div></div>
+    <div class="rend-stat"><div class="rend-stat-num">${totGGPres}</div><div class="rend-stat-label">GG Presenza</div></div>
+    <div class="rend-stat"><div class="rend-stat-num">${totOreOrd}</div><div class="rend-stat-label">Ore Ord.</div></div>
+    <div class="rend-stat"><div class="rend-stat-num amber">${totStraord}</div><div class="rend-stat-label">Straord.</div></div>
+    <div class="rend-stat"><div class="rend-stat-num">${totOreOrd + totStraord}</div><div class="rend-stat-label">Ore Totali</div></div>
+  `;
+
+  document.getElementById('rend-cant-tbody').innerHTML = righe.length
+    ? righe.join('')
+    : `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Nessuna presenza registrata per questo cantiere in questo mese.</td></tr>`;
 }
 
 // ══════════════════════════════════════════

@@ -1827,252 +1827,376 @@ function esportaExcelOperai() {
   if (!monthVal) { toast('Seleziona un mese'); return; }
 
   const [year, month] = monthVal.split('-').map(Number);
-  const monthLabel = new Date(year, month-1, 1).toLocaleDateString('it-IT', { month:'long', year:'numeric' });
+  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
 
-  // Giorni del mese
   const daysInMonth = new Date(year, month, 0).getDate();
-  const allDays = Array.from({length: daysInMonth}, (_, i) => {
-    const d = String(i+1).padStart(2,'0');
-    return `${year}-${String(month).padStart(2,'0')}-${d}`;
+  const allDays = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = String(i + 1).padStart(2, '0');
+    return `${year}-${String(month).padStart(2, '0')}-${d}`;
   });
+
+  // Calcola il giorno della settimana per ogni data (0=Dom, 1=Lun…)
+  function getDow(dateStr) { return new Date(dateStr + 'T00:00:00').getDay(); }
 
   const operaiAttivi = db.operai.filter(o => o.stato === 'attivo');
   const edili = operaiAttivi.filter(o => o.contratto === 'cassa_edile');
   const metalmeccanici = operaiAttivi.filter(o => o.contratto === 'metalmeccanico');
 
-  // Funzione helper: dati operaio per mese
-  function buildOperaioRows(lista) {
-    return lista.map(o => {
-      const giornate = db.giornate.filter(g => g.operaio === o.id && g.data.startsWith(monthVal));
-      const gg = {};
-      giornate.forEach(g => { gg[g.data] = g; });
+  // ─── STILI COMUNI ───
+  const C = {
+    border: { top:{style:'thin',color:{rgb:'CCCCCC'}}, bottom:{style:'thin',color:{rgb:'CCCCCC'}}, left:{style:'thin',color:{rgb:'CCCCCC'}}, right:{style:'thin',color:{rgb:'CCCCCC'}} },
+    borderBold: { top:{style:'medium',color:{rgb:'999999'}}, bottom:{style:'medium',color:{rgb:'999999'}}, left:{style:'medium',color:{rgb:'999999'}}, right:{style:'medium',color:{rgb:'999999'}} },
+    fill: (rgb) => ({ patternType:'solid', fgColor:{rgb} }),
+    font: (opts) => ({ name:'Calibri', sz:10, ...opts }),
+    center: { horizontal:'center', vertical:'center', wrapText:false },
+    left: { horizontal:'left', vertical:'center' },
+    right: { horizontal:'right', vertical:'center' },
+  };
 
-      const row = {
-        'Matr.': o.matr || '',
-        'Nome': titleCase(o.name),
-        'Mansione': o.mansione || '',
-      };
-
-      let totOre = 0, totStraord = 0, ggPresenti = 0, ggAssenti = 0, ggNonMarcati = 0;
-
-      allDays.forEach(d => {
-        const g = gg[d];
-        const dayNum = parseInt(d.split('-')[2]);
-        const label = `G${dayNum}`;
-        if (!g) {
-          row[label] = '';
-          ggNonMarcati++;
-        } else if (g.presente) {
-          const h = (g.ore||0) + (g.straordinari||0);
-          row[label] = h;
-          totOre += g.ore||0;
-          totStraord += g.straordinari||0;
-          ggPresenti++;
-        } else {
-          const motivo = g.motivoTipo || 'A';
-          row[label] = motivo.substring(0,1).toUpperCase();
-          ggAssenti++;
-        }
-      });
-
-      row['GG Pres.'] = ggPresenti;
-      row['GG Ass.'] = ggAssenti;
-      row['Ore Ord.'] = totOre;
-      row['Straord.'] = totStraord;
-      row['Ore Tot.'] = totOre + totStraord;
-      return row;
-    });
+  function cell(v, t, s) {
+    const type = t || (typeof v === 'number' ? 'n' : 's');
+    return { v, t: type, s };
   }
 
-  // Foglio sintesi
-  function buildSintesi(lista, tipoLabel) {
+  // ══════════════════════════════════════════════════
+  //  FOGLIO 1 — SINTESI
+  // ══════════════════════════════════════════════════
+  function buildFoglioSintesi(lista, tipoLabel) {
     return lista.map(o => {
       const giornate = db.giornate.filter(g => g.operaio === o.id && g.data.startsWith(monthVal));
       const presenti = giornate.filter(g => g.presente);
       const assenti = giornate.filter(g => !g.presente);
-      const oreOrd = presenti.reduce((a, g) => a + (g.ore||0), 0);
-      const oreStraord = presenti.reduce((a, g) => a + (g.straordinari||0), 0);
+      const oreOrd = presenti.reduce((a, g) => a + (g.ore || 0), 0);
+      const oreStraord = presenti.reduce((a, g) => a + (g.straordinari || 0), 0);
       return {
-        'Matr.': o.matr || '',
-        'Nome': titleCase(o.name),
-        'Contratto': tipoLabel,
-        'Mansione': o.mansione || '',
-        'GG Presenti': presenti.length,
-        'GG Assenti': assenti.length,
-        'Ore Ordinarie': oreOrd,
-        'Straordinari': oreStraord,
-        'Ore Totali': oreOrd + oreStraord,
+        matr: o.matr || '',
+        nome: titleCase(o.name),
+        contratto: tipoLabel,
+        mansione: o.mansione || '',
+        ggPres: presenti.length,
+        ggAss: assenti.length,
+        oreOrd,
+        oreStraord,
+        oreTot: oreOrd + oreStraord,
       };
     });
   }
 
-  const wb = XLSX.utils.book_new();
+  function createFoglioSintesi(wb, lista, sheetName) {
+    const sintesi = buildFoglioSintesi(lista.filter(o => o.contratto==='cassa_edile'), 'Cassa Edile')
+                     .concat(buildFoglioSintesi(lista.filter(o => o.contratto==='metalmeccanico'), 'Metalmeccanico'));
 
-  function styleSheet(ws, data, isDettaglio) {
-    if (!data.length) return;
-    const keys = Object.keys(data[0]);
-    const nCols = keys.length;
-    const nRows = data.length;
+    // Headers
+    const headers = ['Matr.', 'Nome', 'Contratto', 'Mansione', 'GG Presenti', 'GG Assenti', 'Ore Ordinarie', 'Straordinari', 'Ore Totali'];
+    const colWidths = [7, 30, 16, 18, 12, 12, 14, 13, 11];
 
-    // Larghezze colonne
-    ws['!cols'] = keys.map(k => ({
-      wch: k.startsWith('G') && k.length <= 3 ? 5 : Math.max(k.length + 2, 14)
-    }));
+    // AOA
+    const aoa = [];
+    // Riga 0: Titolo
+    aoa.push([`KE CANTIERE — PRESENZE ${monthLabel.toUpperCase()}`, ...Array(headers.length - 1).fill('')]);
+    // Riga 1: sottotitolo
+    aoa.push([`Esportato il ${new Date().toLocaleDateString('it-IT')}`, ...Array(headers.length - 1).fill('')]);
+    // Riga 2: vuota
+    aoa.push(Array(headers.length).fill(''));
+    // Riga 3: header
+    aoa.push(headers);
+    // Dati
+    sintesi.forEach(r => aoa.push([r.matr, r.nome, r.contratto, r.mansione, r.ggPres, r.ggAss, r.oreOrd, r.oreStraord, r.oreTot]));
+    // Riga totale
+    const totGGPres = sintesi.reduce((a, r) => a + r.ggPres, 0);
+    const totGGAss = sintesi.reduce((a, r) => a + r.ggAss, 0);
+    const totOreOrd = sintesi.reduce((a, r) => a + r.oreOrd, 0);
+    const totStraord = sintesi.reduce((a, r) => a + r.oreStraord, 0);
+    const totOreTot = sintesi.reduce((a, r) => a + r.oreTot, 0);
+    aoa.push(['', 'TOTALE', '', '', totGGPres, totGGAss, totOreOrd, totStraord, totOreTot]);
 
-    // Stile header riga 1
-    const headerFill = { patternType: 'solid', fgColor: { rgb: '1A7A3C' } };
-    const headerFont = { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 };
-    const headerAlign = { horizontal: 'center', vertical: 'center' };
-    const borderStyle = { style: 'thin', color: { rgb: 'CCCCCC' } };
-    const border = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle };
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const nData = sintesi.length;
+    const R_HEADER = 3;
+    const R_DATA_START = 4;
+    const R_TOTALE = R_DATA_START + nData;
 
-    for (let c = 0; c < nCols; c++) {
-      const addr = XLSX.utils.encode_cell({ r: 0, c });
-      if (!ws[addr]) ws[addr] = { v: keys[c], t: 's' };
-      ws[addr].s = { fill: headerFill, font: headerFont, alignment: headerAlign, border };
+    // Merge titolo
+    ws['!merges'] = [
+      { s:{r:0,c:0}, e:{r:0,c:headers.length-1} },
+      { s:{r:1,c:0}, e:{r:1,c:headers.length-1} },
+    ];
+
+    // Stile titolo
+    ws[XLSX.utils.encode_cell({r:0,c:0})].s = {
+      fill: C.fill('0D5C2E'), font: C.font({bold:true, sz:16, color:{rgb:'FFFFFF'}}),
+      alignment: { horizontal:'center', vertical:'center' }, border: C.border
+    };
+    ws[XLSX.utils.encode_cell({r:1,c:0})].s = {
+      fill: C.fill('1A7A3C'), font: C.font({italic:true, sz:10, color:{rgb:'CCFFDD'}}),
+      alignment: { horizontal:'center', vertical:'center' }
+    };
+
+    // Stile header colonne
+    for (let c = 0; c < headers.length; c++) {
+      const addr = XLSX.utils.encode_cell({r: R_HEADER, c});
+      if (!ws[addr]) ws[addr] = {v: headers[c], t:'s'};
+      ws[addr].s = {
+        fill: C.fill('1A7A3C'), font: C.font({bold:true, sz:11, color:{rgb:'FFFFFF'}}),
+        alignment: C.center, border: C.border
+      };
     }
 
     // Stile righe dati
-    for (let r = 1; r <= nRows; r++) {
-      const isEven = r % 2 === 0;
-      const rowFill = isEven
-        ? { patternType: 'solid', fgColor: { rgb: 'F0F7F2' } }
-        : { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } };
+    for (let r = R_DATA_START; r < R_DATA_START + nData; r++) {
+      const isEven = (r - R_DATA_START) % 2 === 0;
+      const rowData = sintesi[r - R_DATA_START];
+      const isCE = rowData.contratto === 'Cassa Edile';
+
+      for (let c = 0; c < headers.length; c++) {
+        const addr = XLSX.utils.encode_cell({r, c});
+        if (!ws[addr]) ws[addr] = {v:'', t:'s'};
+        const isTot = c >= 4;
+        const isNome = c === 1;
+        const isContr = c === 2;
+        ws[addr].s = {
+          fill: C.fill(isEven ? 'F4FBF7' : 'FFFFFF'),
+          font: C.font({
+            bold: isTot || isNome,
+            sz: isNome ? 11 : 10,
+            color: { rgb: isTot ? '0D5C2E' : (isContr ? (isCE ? '1A7A3C' : '1E40AF') : '1A1A1A') }
+          }),
+          alignment: (c === 0 || c >= 4) ? C.center : C.left,
+          border: C.border
+        };
+      }
+    }
+
+    // Riga totale
+    for (let c = 0; c < headers.length; c++) {
+      const addr = XLSX.utils.encode_cell({r: R_TOTALE, c});
+      if (!ws[addr]) ws[addr] = {v:'', t:'s'};
+      ws[addr].s = {
+        fill: C.fill('0D5C2E'), font: C.font({bold:true, sz:11, color:{rgb:'FFFFFF'}}),
+        alignment: c <= 1 ? C.left : C.center, border: C.borderBold
+      };
+    }
+
+    // Altezze righe e larghezze colonne
+    ws['!rows'] = [{ hpt:32 }, { hpt:18 }, { hpt:8 }, { hpt:24 }];
+    for (let r = 0; r < nData + 1; r++) ws['!rows'].push({ hpt: 20 });
+    ws['!cols'] = colWidths.map(w => ({ wch: w }));
+
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  }
+
+  // ══════════════════════════════════════════════════
+  //  FOGLIO 2/3 — DETTAGLIO GIORNALIERO
+  // ══════════════════════════════════════════════════
+  function createFoglioDettaglio(wb, lista, sheetName) {
+    if (!lista.length) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Nessun operaio']]), sheetName);
+      return;
+    }
+
+    // Colonne fisse: Matr, Nome, Mansione, G1…G31, GG Pres, GG Ass, Ore Ord, Straord, Ore Tot
+    const fixedCols = ['Matr.', 'Nome', 'Mans.'];
+    const dayCols = allDays.map((d, i) => String(i + 1));
+    const summCols = ['P', 'A', 'Ore', 'St.', 'Tot.'];
+    const allCols = [...fixedCols, ...dayCols, ...summCols];
+
+    // Costruisci dati per ogni operaio
+    const operaiData = lista.map(o => {
+      const giornate = db.giornate.filter(g => g.operaio === o.id && g.data.startsWith(monthVal));
+      const gg = {};
+      giornate.forEach(g => { gg[g.data] = g; });
+
+      let ggPres = 0, ggAss = 0, oreOrd = 0, oreStraord = 0;
+      const giorni = allDays.map(d => {
+        const g = gg[d];
+        if (!g) return { val: '', type: 'empty' };
+        if (g.presente) {
+          ggPres++;
+          oreOrd += g.ore || 0;
+          oreStraord += g.straordinari || 0;
+          return { val: (g.ore || 0) + (g.straordinari || 0), type: 'presente' };
+        } else {
+          ggAss++;
+          return { val: (g.motivoTipo || 'A').substring(0,1).toUpperCase(), type: 'assente' };
+        }
+      });
+
+      return { operaio: o, giorni, ggPres, ggAss, oreOrd, oreStraord };
+    });
+
+    // AOA
+    const aoa = [];
+    // Riga 0: Titolo
+    aoa.push([`KE CANTIERE — ${sheetName.toUpperCase()} — ${monthLabel.toUpperCase()}`, ...Array(allCols.length - 1).fill('')]);
+    // Riga 1: intestazioni giorno (abbreviate: Lun, Mar, ecc.)
+    const dowNames = ['D','L','M','Me','G','V','S'];
+    const dowRow = ['', '', '', ...allDays.map(d => dowNames[getDow(d)]), '', '', '', '', ''];
+    aoa.push(dowRow);
+    // Riga 2: header colonne
+    aoa.push(allCols);
+    // Dati
+    operaiData.forEach(od => {
+      const row = [od.operaio.matr || '', titleCase(od.operaio.name), od.operaio.mansione || '',
+        ...od.giorni.map(g => g.val),
+        od.ggPres, od.ggAss, od.oreOrd, od.oreStraord, od.oreOrd + od.oreStraord
+      ];
+      aoa.push(row);
+    });
+    // Totale
+    const totRow = ['', 'TOTALE', '',
+      ...allDays.map(d => {
+        const tot = operaiData.reduce((sum, od) => {
+          const idx = allDays.indexOf(d);
+          const g = od.giorni[idx];
+          return sum + (typeof g.val === 'number' ? g.val : 0);
+        }, 0);
+        return tot > 0 ? tot : '';
+      }),
+      operaiData.reduce((s, od) => s + od.ggPres, 0),
+      operaiData.reduce((s, od) => s + od.ggAss, 0),
+      operaiData.reduce((s, od) => s + od.oreOrd, 0),
+      operaiData.reduce((s, od) => s + od.oreStraord, 0),
+      operaiData.reduce((s, od) => s + od.oreOrd + od.oreStraord, 0),
+    ];
+    aoa.push(totRow);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const nData = operaiData.length;
+    const R_DOW = 1;
+    const R_HEADER = 2;
+    const R_DATA = 3;
+    const R_TOTALE = R_DATA + nData;
+    const nCols = allCols.length;
+    const fixedN = fixedCols.length;
+    const summStart = fixedN + dayCols.length;
+
+    // Merge titolo
+    ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:nCols-1} }];
+
+    // Stile titolo
+    ws[XLSX.utils.encode_cell({r:0,c:0})].s = {
+      fill: C.fill('0D5C2E'), font: C.font({bold:true, sz:14, color:{rgb:'FFFFFF'}}),
+      alignment: { horizontal:'center', vertical:'center' }
+    };
+
+    // Stile riga giorno della settimana
+    for (let c = 0; c < nCols; c++) {
+      const addr = XLSX.utils.encode_cell({r: R_DOW, c});
+      if (!ws[addr]) ws[addr] = {v:'', t:'s'};
+      const d = allDays[c - fixedN];
+      const dow = d ? getDow(d) : -1;
+      const isWeekend = dow === 0 || dow === 6;
+      ws[addr].s = {
+        fill: C.fill(isWeekend ? '4A1A1A' : '2C2C2C'),
+        font: C.font({ bold:true, sz:9, color:{ rgb: isWeekend ? 'FF8888' : 'AAAAAA' } }),
+        alignment: C.center
+      };
+    }
+
+    // Stile header colonne
+    for (let c = 0; c < nCols; c++) {
+      const addr = XLSX.utils.encode_cell({r: R_HEADER, c});
+      if (!ws[addr]) ws[addr] = {v: allCols[c], t:'s'};
+      const isSumm = c >= summStart;
+      const d = allDays[c - fixedN];
+      const dow = d ? getDow(d) : -1;
+      const isWeekend = dow === 0 || dow === 6;
+      ws[addr].s = {
+        fill: C.fill(isSumm ? '0D5C2E' : isWeekend ? '6B2121' : '1A7A3C'),
+        font: C.font({bold:true, sz: c < fixedN ? 11 : 10, color:{rgb:'FFFFFF'}}),
+        alignment: C.center, border: C.border
+      };
+    }
+
+    // Stile righe dati
+    for (let r = R_DATA; r < R_DATA + nData; r++) {
+      const od = operaiData[r - R_DATA];
+      const isEven = (r - R_DATA) % 2 === 0;
 
       for (let c = 0; c < nCols; c++) {
-        const addr = XLSX.utils.encode_cell({ r, c });
-        if (!ws[addr]) ws[addr] = { v: '', t: 's' };
-        const key = keys[c];
+        const addr = XLSX.utils.encode_cell({r, c});
+        if (!ws[addr]) ws[addr] = {v:'', t:'s'};
         const val = ws[addr].v;
 
-        // Colore celle per presenze/assenze nel dettaglio
-        let cellFill = rowFill;
-        let cellFont = { sz: 10 };
-        if (isDettaglio && key.startsWith('G') && key.length <= 3) {
-          if (val === '' || val === undefined) {
-            cellFill = { patternType: 'solid', fgColor: { rgb: 'EEEEEE' } };
-            cellFont = { sz: 10, color: { rgb: 'AAAAAA' } };
-          } else if (typeof val === 'number') {
-            cellFill = { patternType: 'solid', fgColor: { rgb: 'D4EDDA' } };
-            cellFont = { bold: true, sz: 10, color: { rgb: '155724' } };
+        let fill, font, align;
+
+        if (c < fixedN) {
+          // Colonne fisse (Matr, Nome, Mansione)
+          fill = C.fill(isEven ? 'F4FBF7' : 'FFFFFF');
+          font = C.font({ bold: c===1, sz: c===1 ? 11 : 10, color:{rgb:'1A1A1A'} });
+          align = c===0 ? C.center : C.left;
+        } else if (c >= summStart) {
+          // Colonne sommario
+          fill = C.fill(isEven ? 'EAF7EF' : 'F4FBF7');
+          font = C.font({ bold:true, sz:10, color:{rgb:'0D5C2E'} });
+          align = C.center;
+        } else {
+          // Celle giornaliere
+          const dayIdx = c - fixedN;
+          const g = od.giorni[dayIdx];
+          const d = allDays[dayIdx];
+          const dow = getDow(d);
+          const isWeekend = dow === 0 || dow === 6;
+
+          if (g.type === 'presente') {
+            fill = C.fill('D4EDDA');
+            font = C.font({ bold:true, sz:10, color:{rgb:'155724'} });
+          } else if (g.type === 'assente') {
+            fill = C.fill('FDECEA');
+            font = C.font({ bold:true, sz:10, color:{rgb:'B71C1C'} });
+          } else if (isWeekend) {
+            fill = C.fill('F0E8E8');
+            font = C.font({ sz:10, color:{rgb:'CCAAAA'} });
           } else {
-            cellFill = { patternType: 'solid', fgColor: { rgb: 'FDECEA' } };
-            cellFont = { bold: true, sz: 10, color: { rgb: 'B71C1C' } };
+            fill = C.fill(isEven ? 'F9F9F9' : 'FFFFFF');
+            font = C.font({ sz:10, color:{rgb:'CCCCCC'} });
           }
+          align = C.center;
         }
-        // Colonne totali in grassetto
-        if (['GG Pres.','GG Ass.','Ore Ord.','Straord.','Ore Tot.','GG Presenti','GG Assenti','Ore Ordinarie','Straordinari','Ore Totali'].includes(key)) {
-          cellFont = { ...cellFont, bold: true };
-        }
-        ws[addr].s = { fill: cellFill, font: cellFont, alignment: { horizontal: 'center' }, border };
+
+        ws[addr].s = { fill, font, alignment: align, border: C.border };
       }
     }
 
-    // Altezza righe
-    ws['!rows'] = [{ hpt: 22 }];
-    for (let r = 1; r <= nRows; r++) ws['!rows'].push({ hpt: 18 });
-  }
-
-  function addSheet(wb, data, name, isDettaglio = false) {
-    if (!data.length) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Nessun dato']]), name);
-      return;
+    // Riga totale
+    for (let c = 0; c < nCols; c++) {
+      const addr = XLSX.utils.encode_cell({r: R_TOTALE, c});
+      if (!ws[addr]) ws[addr] = {v:'', t:'s'};
+      const val = ws[addr].v;
+      const isSumm = c >= summStart;
+      const isDayCol = c >= fixedN && c < summStart;
+      ws[addr].s = {
+        fill: C.fill('0D5C2E'),
+        font: C.font({ bold:true, sz: 10, color:{ rgb: (isSumm && val) ? 'AAFFD0' : 'FFFFFF' } }),
+        alignment: C.center, border: C.borderBold
+      };
     }
-    const ws = XLSX.utils.json_to_sheet(data);
-    styleSheet(ws, data, isDettaglio);
-    XLSX.utils.book_append_sheet(wb, ws, name);
-  }
 
-  // Titolo mese come prima riga in ogni foglio (aggiunto come AOA sopra)
-  function addSheetWithTitle(wb, data, name, isDettaglio = false) {
-    if (!data.length) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Nessun dato']]), name);
-      return;
-    }
-    const keys = Object.keys(data[0]);
-    // AOA: prima riga = titolo, seconda = header, poi dati
-    const aoa = [
-      [monthLabel.toUpperCase()],
-      keys,
-      ...data.map(row => keys.map(k => row[k] ?? ''))
+    // Larghezze colonne
+    ws['!cols'] = [
+      { wch: 6 },   // Matr
+      { wch: 28 },  // Nome
+      { wch: 12 },  // Mansione
+      ...dayCols.map(() => ({ wch: 4 })),
+      { wch: 5 }, { wch: 5 }, { wch: 7 }, { wch: 5 }, { wch: 7 }
     ];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-    // Merge titolo su tutta la riga
-    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: keys.length - 1 } }];
-    const titleCell = ws[XLSX.utils.encode_cell({ r: 0, c: 0 })];
-    titleCell.s = {
-      fill: { patternType: 'solid', fgColor: { rgb: '0D5C2E' } },
-      font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } },
-      alignment: { horizontal: 'center', vertical: 'center' }
-    };
-    ws['!rows'] = [{ hpt: 28 }];
+    // Altezze righe
+    ws['!rows'] = [{ hpt: 28 }, { hpt: 14 }, { hpt: 22 }];
+    for (let r = 0; r < nData + 1; r++) ws['!rows'].push({ hpt: 19 });
 
-    // Riapplica stile su header + dati (offset +1 riga per il titolo)
-    const headerFill = { patternType: 'solid', fgColor: { rgb: '1A7A3C' } };
-    const headerFont = { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 };
-    const borderStyle = { style: 'thin', color: { rgb: 'CCCCCC' } };
-    const border = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle };
-
-    for (let c = 0; c < keys.length; c++) {
-      const addr = XLSX.utils.encode_cell({ r: 1, c });
-      if (!ws[addr]) ws[addr] = { v: keys[c], t: 's' };
-      ws[addr].s = { fill: headerFill, font: headerFont, alignment: { horizontal: 'center', vertical: 'center' }, border };
-    }
-    ws['!rows'].push({ hpt: 22 });
-
-    for (let r = 0; r < data.length; r++) {
-      const isEven = r % 2 === 0;
-      const rowFill = isEven
-        ? { patternType: 'solid', fgColor: { rgb: 'F0F7F2' } }
-        : { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } };
-      for (let c = 0; c < keys.length; c++) {
-        const addr = XLSX.utils.encode_cell({ r: r + 2, c });
-        if (!ws[addr]) ws[addr] = { v: '', t: 's' };
-        const key = keys[c];
-        const val = ws[addr].v;
-        let cellFill = rowFill;
-        let cellFont = { sz: 10 };
-        if (isDettaglio && key.startsWith('G') && key.length <= 3) {
-          if (val === '' || val === undefined) {
-            cellFill = { patternType: 'solid', fgColor: { rgb: 'EEEEEE' } };
-            cellFont = { sz: 10, color: { rgb: 'AAAAAA' } };
-          } else if (typeof val === 'number') {
-            cellFill = { patternType: 'solid', fgColor: { rgb: 'D4EDDA' } };
-            cellFont = { bold: true, sz: 10, color: { rgb: '155724' } };
-          } else {
-            cellFill = { patternType: 'solid', fgColor: { rgb: 'FDECEA' } };
-            cellFont = { bold: true, sz: 10, color: { rgb: 'B71C1C' } };
-          }
-        }
-        if (['GG Pres.','GG Ass.','Ore Ord.','Straord.','Ore Tot.','GG Presenti','GG Assenti','Ore Ordinarie','Straordinari','Ore Totali'].includes(key)) {
-          cellFont = { ...cellFont, bold: true };
-        }
-        ws[addr].s = { fill: cellFill, font: cellFont, alignment: { horizontal: 'center' }, border };
-      }
-      ws['!rows'].push({ hpt: 18 });
-    }
-
-    ws['!cols'] = keys.map(k => ({
-      wch: k.startsWith('G') && k.length <= 3 ? 5 : Math.max(k.length + 2, 14)
-    }));
-
-    XLSX.utils.book_append_sheet(wb, ws, name);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
   }
 
-  // Sintesi generale
-  const sintesiEdili = buildSintesi(edili, 'Cassa Edile');
-  const sintesiMeta = buildSintesi(metalmeccanici, 'Metalmeccanico');
-  const sintesiTot = [...sintesiEdili, ...sintesiMeta];
-  addSheetWithTitle(wb, sintesiTot, 'Sintesi', false);
+  // ══════════════════════════════════════════════════
+  //  COMPONI WORKBOOK
+  // ══════════════════════════════════════════════════
+  const wb = XLSX.utils.book_new();
+  createFoglioSintesi(wb, operaiAttivi, 'Sintesi');
+  createFoglioDettaglio(wb, edili, 'Cassa Edile');
+  createFoglioDettaglio(wb, metalmeccanici, 'Metalmeccanico');
 
-  // Cassa Edile dettaglio
-  addSheetWithTitle(wb, buildOperaioRows(edili), 'Cassa Edile', true);
-
-  // Metalmeccanico dettaglio
-  addSheetWithTitle(wb, buildOperaioRows(metalmeccanici), 'Metalmeccanico', true);
-
-  const filename = `Presenze_${monthVal.replace('-','_')}.xlsx`;
+  const filename = `Presenze_${monthVal.replace('-', '_')}.xlsx`;
   XLSX.writeFile(wb, filename);
   toast(`✓ Export ${filename}`);
 }

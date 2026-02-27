@@ -722,6 +722,41 @@
     margin-bottom: 8px; transition: color 0.15s;
   }
   .cantiere-name-link:hover { color: var(--amber); }
+  /* ─── DOCUMENTI OPERAIO ─── */
+  .doc-list { display: flex; flex-direction: column; gap: 8px; }
+  .doc-item {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--plate); border: 1px solid var(--border);
+    padding: 12px 14px; transition: border-color 0.15s;
+  }
+  .doc-item:hover { border-color: var(--amber); }
+  .doc-icon {
+    width: 40px; height: 40px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; background: var(--steel); border: 1px solid var(--border);
+  }
+  .doc-info { flex: 1; min-width: 0; }
+  .doc-name {
+    font-size: 13px; font-weight: 600; color: var(--white);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .doc-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .doc-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .doc-drop-zone {
+    border: 2px dashed var(--border); padding: 2rem; text-align: center;
+    cursor: pointer; transition: all 0.15s; margin-bottom: 16px;
+    color: var(--muted); font-size: 13px;
+  }
+  .doc-drop-zone:hover, .doc-drop-zone.dragover {
+    border-color: var(--amber); color: var(--amber); background: rgba(34,197,94,0.04);
+  }
+  .doc-drop-zone .drop-icon { font-size: 32px; margin-bottom: 8px; }
+  .doc-cat-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin: 16px 0 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .doc-cat-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 </style>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 </head>
@@ -1136,6 +1171,38 @@
     </div>
     <div class="modal-body">
       <div id="cantiere-detail-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL DOCUMENTI OPERAIO ═══ -->
+<div class="modal-overlay" id="modal-documenti-operaio">
+  <div class="modal" style="max-width:700px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <div class="modal-title" id="docs-op-title">📁 Documenti</div>
+      <button class="modal-close" onclick="closeModal('modal-documenti-operaio')">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Drop zone upload -->
+      <div class="doc-drop-zone" id="doc-drop-zone" onclick="document.getElementById('doc-file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('dragover')"
+           ondragleave="this.classList.remove('dragover')"
+           ondrop="handleDocDrop(event)">
+        <div class="drop-icon">📄</div>
+        <div><strong>Clicca o trascina qui</strong> per caricare un documento</div>
+        <div style="margin-top:4px;font-size:11px">PDF, immagini, Word — max 20MB</div>
+      </div>
+      <input type="file" id="doc-file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" style="display:none" onchange="handleDocFileSelect(this.files)">
+
+      <!-- Categorie suggerite -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px" id="doc-cat-chips"></div>
+
+      <!-- Lista documenti -->
+      <div id="doc-list-container">
+        <div class="empty" style="padding:2rem"><div class="empty-icon" style="font-size:32px">📂</div><div class="empty-text" style="font-size:14px">Nessun documento</div></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1689,6 +1756,7 @@ function renderOperai() {
       <td><span class="badge badge-${o.stato === 'attivo' ? 'green' : 'red'}">${o.stato}</span></td>
       <td style="display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" onclick="apriRendicontoOperaio('${o.id}')">📋</button>
+        <button class="btn btn-ghost btn-sm" onclick="apriDocumentiOperaio('${o.id}','${o.name}')">📁</button>
         <button class="btn btn-ghost btn-sm" onclick="openModalOperaio('${o.id}')">Modifica</button>
         <button class="btn btn-sm" style="background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.3)" onclick="eliminaOperaio('${o.id}','${o.name}')">Elimina</button>
       </td>
@@ -2506,6 +2574,135 @@ function openDettaglioCantiere(id) {
     }).join('');
   }
   document.getElementById('modal-cantiere-detail').classList.add('open');
+}
+
+// ══════════════════════════════════════════
+//  DOCUMENTI OPERAIO
+// ══════════════════════════════════════════
+let docsOpId = null;
+
+const DOC_CATEGORIE = ['Documento identità','Permesso soggiorno','Codice fiscale','UniLav','Contratto','Certificati','Visita medica','Altro'];
+
+const DOC_ICONS = {
+  pdf: '📕', jpg: '🖼️', jpeg: '🖼️', png: '🖼️', webp: '🖼️',
+  doc: '📘', docx: '📘', default: '📄'
+};
+
+function docExt(name) { return (name.split('.').pop()||'').toLowerCase(); }
+function docIcon(name) { return DOC_ICONS[docExt(name)] || DOC_ICONS.default; }
+function docSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(0) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+async function apriDocumentiOperaio(id, nome) {
+  docsOpId = id;
+  document.getElementById('docs-op-title').textContent = '📁 ' + titleCase(nome);
+  // Chip categorie
+  document.getElementById('doc-cat-chips').innerHTML = DOC_CATEGORIE.map(c =>
+    `<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 10px" onclick="uploadDocConNome('${c}')">${c}</button>`
+  ).join('');
+  document.getElementById('modal-documenti-operaio').classList.add('open');
+  await renderDocList();
+}
+
+async function renderDocList() {
+  const container = document.getElementById('doc-list-container');
+  container.innerHTML = `<div style="text-align:center;padding:1rem;color:var(--muted)">Caricamento...</div>`;
+  try {
+    const r = await fetch(`/api/documenti/${docsOpId}`);
+    const docs = await r.json();
+    if (!docs.length) {
+      container.innerHTML = `<div class="empty" style="padding:2rem"><div class="empty-icon" style="font-size:32px">📂</div><div class="empty-text" style="font-size:14px">Nessun documento</div></div>`;
+      return;
+    }
+    container.innerHTML = `<div class="doc-list">${docs.map(d => `
+      <div class="doc-item" id="docitem-${d.id}">
+        <div class="doc-icon">${docIcon(d.name)}</div>
+        <div class="doc-info">
+          <div class="doc-name" title="${d.name}">${d.name}</div>
+          <div class="doc-meta">${docSize(d.size)} · ${new Date(d.uploadedAt).toLocaleDateString('it-IT')}</div>
+        </div>
+        <div class="doc-actions">
+          <a href="${d.url}" target="_blank" class="btn btn-ghost btn-sm" title="Apri">👁</a>
+          <a href="${d.url}" download="${d.name}" class="btn btn-ghost btn-sm" title="Scarica">⬇</a>
+          <button class="btn btn-ghost btn-sm" title="Rinomina" onclick="rinominaDoc('${d.id}','${d.name.replace(/'/g,"\\'")}')">✏</button>
+          <button class="btn btn-sm" style="background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.3)" title="Elimina" onclick="eliminaDoc('${d.id}','${d.name.replace(/'/g,"\\'")}')">✕</button>
+        </div>
+      </div>
+    `).join('')}</div>`;
+  } catch(e) {
+    container.innerHTML = `<div class="empty" style="padding:2rem;color:var(--red)">Errore caricamento documenti</div>`;
+  }
+}
+
+async function uploadDoc(files, nomeOverride) {
+  if (!files || !files.length || !docsOpId) return;
+  const zone = document.getElementById('doc-drop-zone');
+  zone.textContent = '⏳ Caricamento...';
+
+  for (const file of files) {
+    const fd = new FormData();
+    // Se c'è un nome override, rinomina il file prima di uploadarlo
+    const finalFile = nomeOverride
+      ? new File([file], nomeOverride + '.' + docExt(file.name), { type: file.type })
+      : file;
+    fd.append('file', finalFile);
+    try {
+      const r = await fetch(`/api/documenti/${docsOpId}`, { method:'POST', body: fd });
+      const j = await r.json();
+      if (!j.ok) toast('Errore: ' + (j.error||'upload fallito'));
+    } catch(e) { toast('Errore upload: ' + e.message); }
+  }
+
+  zone.innerHTML = '<div class="drop-icon">📄</div><div><strong>Clicca o trascina qui</strong> per caricare un documento</div><div style="margin-top:4px;font-size:11px">PDF, immagini, Word — max 20MB</div>';
+  document.getElementById('doc-file-input').value = '';
+  await renderDocList();
+  toast('✓ Documento caricato');
+}
+
+function uploadDocConNome(categoria) {
+  const input = document.getElementById('doc-file-input');
+  input.setAttribute('data-categoria', categoria);
+  input.click();
+}
+
+function handleDocFileSelect(files) {
+  const input = document.getElementById('doc-file-input');
+  const cat = input.getAttribute('data-categoria') || null;
+  input.removeAttribute('data-categoria');
+  if (cat && files.length === 1) {
+    uploadDoc(files, cat);
+  } else {
+    uploadDoc(files, null);
+  }
+}
+
+function handleDocDrop(e) {
+  e.preventDefault();
+  document.getElementById('doc-drop-zone').classList.remove('dragover');
+  uploadDoc(e.dataTransfer.files, null);
+}
+
+async function eliminaDoc(fileId, nome) {
+  if (!confirm(`Eliminare "${nome}"?`)) return;
+  await fetch(`/api/documenti/${docsOpId}/${encodeURIComponent(fileId)}`, { method:'DELETE' });
+  await renderDocList();
+  toast('Documento eliminato');
+}
+
+async function rinominaDoc(fileId, nomeAttuale) {
+  const nuovoNome = prompt('Nuovo nome (senza estensione):', nomeAttuale.replace(/\.[^.]+$/, ''));
+  if (!nuovoNome || nuovoNome.trim() === '') return;
+  const ext = nomeAttuale.includes('.') ? '.' + nomeAttuale.split('.').pop() : '';
+  await fetch(`/api/documenti/${docsOpId}/${encodeURIComponent(fileId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ name: nuovoNome.trim() + ext })
+  });
+  await renderDocList();
+  toast('✓ Rinominato');
 }
 
 // ══════════════════════════════════════════

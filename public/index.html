@@ -836,44 +836,46 @@ select{background:var(--surface-1);border:1px solid var(--border-hi);color:var(-
 
 <script>
 // ══════════════════════════════════════════
-//  AUTH
+//  AUTH — server-side, token-based, bcrypt
 // ══════════════════════════════════════════
-function hashPwd(pwd) {
-  let r = ''; const salt = 'ke_cantiere_2024';
-  for (let i = 0; i < pwd.length; i++) r += String.fromCharCode(pwd.charCodeAt(i) ^ salt.charCodeAt(i % salt.length));
-  return btoa(r);
-}
-const DEFAULT_USERS = [
-  { username: 'admin', password: hashPwd('admin123'), role: 'admin' },
-  { username: 'cantiere', password: hashPwd('cantiere'), role: 'user' }
-];
-async function fetchUsersFromServer() {
-  try { const r = await fetch('/api/users'); if (!r.ok) return DEFAULT_USERS; const u = await r.json(); return (u && u.length > 0) ? u : DEFAULT_USERS; } catch { return DEFAULT_USERS; }
-}
-function getUsers() { try { const s = localStorage.getItem('ke_users'); return s ? JSON.parse(s) : DEFAULT_USERS; } catch { return DEFAULT_USERS; } }
-function saveUsers(users) { localStorage.setItem('ke_users', JSON.stringify(users)); fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(users)}).catch(()=>{}); }
-async function syncUsersFromServer() { const u = await fetchUsersFromServer(); localStorage.setItem('ke_users', JSON.stringify(u)); }
 let currentUser = null;
+let _sessionToken = null;
+
+function getToken() { return _sessionToken || sessionStorage.getItem('ke_token'); }
+function setToken(t) { _sessionToken = t; sessionStorage.setItem('ke_token', t); }
+function clearToken() { _sessionToken = null; sessionStorage.removeItem('ke_token'); }
+
+function authFetch(url, opts = {}) {
+  const t = getToken();
+  opts.headers = opts.headers || {};
+  if (t) opts.headers['x-session-token'] = t;
+  return fetch(url, opts);
+}
+
 async function doLogin() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
   const remember = document.getElementById('remember-me').checked;
   const err = document.getElementById('login-error');
-  const btn = document.querySelector('.login-btn');
-  btn.disabled = true; btn.style.opacity = '0.7';
   const btnText = document.getElementById('login-btn-text');
+  if (!username || !password) { err.textContent = 'Inserisci username e password.'; err.classList.add('show'); return; }
   if (btnText) btnText.textContent = '...';
-  const users = await fetchUsersFromServer();
-  localStorage.setItem('ke_users', JSON.stringify(users));
-  btn.disabled = false; btn.style.opacity = '';
-  if (btnText) btnText.textContent = 'Accedi';
-  const user = users.find(u => u.username === username && u.password === hashPwd(password));
-  if (!user) { err.classList.add('show'); document.getElementById('login-password').value = ''; document.getElementById('login-password').focus(); return; }
-  err.classList.remove('show'); currentUser = user;
-  sessionStorage.setItem('ke_session', JSON.stringify({ username: user.username, role: user.role }));
-  if (remember) localStorage.setItem('ke_remember_user', username); else localStorage.removeItem('ke_remember_user');
-  await loginSuccess(user);
+  try {
+    const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username, password }) });
+    const data = await res.json();
+    if (btnText) btnText.textContent = 'Accedi';
+    if (!res.ok) { err.textContent = data.error || 'Credenziali non valide.'; err.classList.add('show'); document.getElementById('login-password').value = ''; document.getElementById('login-password').focus(); return; }
+    err.classList.remove('show');
+    setToken(data.token);
+    currentUser = { username: data.username, role: data.role };
+    if (remember) localStorage.setItem('ke_remember_user', username); else localStorage.removeItem('ke_remember_user');
+    await loginSuccess(currentUser);
+  } catch(e) {
+    if (btnText) btnText.textContent = 'Accedi';
+    err.textContent = 'Errore di connessione.'; err.classList.add('show');
+  }
 }
+
 async function loginSuccess(user) {
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('app').classList.add('visible');
@@ -881,26 +883,42 @@ async function loginSuccess(user) {
   await syncUsersFromServer(); await loadDBFromServer();
   applyRoleUI(); renderDashboard(); initPresenze(); initExportMonth();
 }
-function doLogout() {
-  currentUser = null; sessionStorage.removeItem('ke_session');
+
+async function doLogout() {
+  try { await authFetch('/api/logout', { method:'POST' }); } catch {}
+  currentUser = null; clearToken();
   document.getElementById('app').classList.remove('visible');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('login-username').value = ''; document.getElementById('login-password').value = '';
-  document.getElementById('login-username').focus(); checkRemember();
+  checkRemember();
 }
-// Tasto Esci → torna alla home Electron oppure fa logout
+
 function doEsci() {
-  if (window.electronAPI) { window.electronAPI.switchSite('home'); }
-  else { doLogout(); }
+  if (window.electronAPI) { window.electronAPI.switchSite('home'); } else { doLogout(); }
 }
+
+function getUsers() { try { const s = localStorage.getItem('ke_users_safe'); return s ? JSON.parse(s) : []; } catch { return []; } }
+
+async function syncUsersFromServer() {
+  try { const r = await authFetch('/api/users'); if (!r.ok) return; const u = await r.json(); localStorage.setItem('ke_users_safe', JSON.stringify(u)); } catch {}
+}
+
 document.addEventListener('keydown', function(e) {
   const ls = document.getElementById('login-screen');
   if (!ls.classList.contains('hidden') && e.key === 'Enter') doLogin();
 });
+
 function checkRemember() { const s = localStorage.getItem('ke_remember_user'); if (s) { document.getElementById('login-username').value = s; document.getElementById('remember-me').checked = true; document.getElementById('login-password').focus(); } }
+
 (async function() {
-  const session = sessionStorage.getItem('ke_session');
-  if (session) { try { const s = JSON.parse(session); const u = getUsers().find(u => u.username === s.username && u.role === s.role); if (u) { currentUser = u; await loginSuccess(u); } } catch {} }
+  const token = getToken();
+  if (token) {
+    try {
+      const res = await fetch('/api/me', { headers: { 'x-session-token': token } });
+      if (res.ok) { const user = await res.json(); currentUser = user; await loginSuccess(user); return; }
+    } catch {}
+    clearToken();
+  }
   checkRemember();
 })();
 
@@ -920,34 +938,43 @@ function renderUsersList() {
     </div>
   `).join('');
 }
-function aggiungiUtente() {
+
+async function aggiungiUtente() {
   const username = document.getElementById('new-username').value.trim();
   const password = document.getElementById('new-password').value;
   const role = document.getElementById('new-role').value;
   if (!username || !password) { toast('Compila tutti i campi'); return; }
-  const users = getUsers();
-  if (users.find(u => u.username === username)) { toast('Username già esistente'); return; }
-  users.push({ username, password: hashPwd(password), role });
-  saveUsers(users); document.getElementById('new-username').value = ''; document.getElementById('new-password').value = '';
-  renderUsersList(); toast('Utente aggiunto ✓');
+  const res = await authFetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username, password, role }) });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error || 'Errore'); return; }
+  document.getElementById('new-username').value = ''; document.getElementById('new-password').value = '';
+  await syncUsersFromServer(); renderUsersList(); toast('Utente aggiunto ✓');
 }
-function eliminaUtente(username) {
+
+async function eliminaUtente(username) {
   if (!confirm(`Eliminare l'utente "${username}"?`)) return;
-  saveUsers(getUsers().filter(u => u.username !== username)); renderUsersList(); toast('Utente eliminato');
+  const res = await authFetch(`/api/users/${encodeURIComponent(username)}`, { method:'DELETE' });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error || 'Errore'); return; }
+  await syncUsersFromServer(); renderUsersList(); toast('Utente eliminato');
 }
+
 function openCambioPassword(username) {
   document.getElementById('cp-username').value = username;
   document.getElementById('cp-password').value = ''; document.getElementById('cp-confirm').value = '';
   document.getElementById('modal-cambio-password').classList.add('open');
 }
-function salvaCambioPassword() {
+
+async function salvaCambioPassword() {
   const username = document.getElementById('cp-username').value;
   const pwd = document.getElementById('cp-password').value;
   const confirm = document.getElementById('cp-confirm').value;
   if (!pwd) { toast('Inserisci la password'); return; }
   if (pwd !== confirm) { toast('Le password non coincidono'); return; }
-  const users = getUsers(); const idx = users.findIndex(u => u.username === username);
-  if (idx !== -1) { users[idx].password = hashPwd(pwd); saveUsers(users); closeModal('modal-cambio-password'); toast('Password aggiornata ✓'); }
+  const res = await authFetch(`/api/users/${encodeURIComponent(username)}/password`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: pwd }) });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error || 'Errore'); return; }
+  closeModal('modal-cambio-password'); toast('Password aggiornata ✓');
 }
 
 // ══════════════════════════════════════════
@@ -959,7 +986,7 @@ if (!db.diari) db.diari = [];
 
 async function loadDBFromServer() {
   try {
-    const r = await fetch('/api/data'); if (!r.ok) throw new Error('Server error');
+    const r = await authFetch('/api/data'); if (!r.ok) throw new Error('Server error');
     const data = await r.json();
     if (data && (data.operai?.length > 0 || data.giornate?.length > 0)) {
       db = data; if (!db.diari) db.diari = [];
@@ -975,7 +1002,7 @@ async function loadDBFromServer() {
 }
 function saveDB() {
   localStorage.setItem('ke_cantiere_db', JSON.stringify(db));
-  fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(db)}).catch(()=>{});
+  authFetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(db)}).catch(()=>{});
 }
 
 // ══════════════════════════════════════════

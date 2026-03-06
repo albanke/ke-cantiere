@@ -1305,28 +1305,26 @@ function initPresenze() { document.getElementById('presenza-date').value=todaySt
 // ══════════════════════════════════════════
 //  EXCEL EXPORT (logica invariata)
 // ══════════════════════════════════════════
-function esportaExcelOperai() {
-  const monthVal=document.getElementById('export-month').value; if (!monthVal) { toast('Seleziona un mese'); return; }
-  const [year,month]=monthVal.split('-').map(Number);
-  const monthLabel=new Date(year,month-1,1).toLocaleDateString('it-IT',{month:'long',year:'numeric'});
-  const daysInMonth=new Date(year,month,0).getDate();
-  const allDays=Array.from({length:daysInMonth},(_,i)=>`${year}-${String(month).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`);
-  const getDow=ds=>new Date(ds+'T00:00:00').getDay();
-  const DOW=['D','L','M','Me','G','V','S'];
-  const operaiAttivi=db.operai.filter(o=>o.stato==='attivo');
-  const edili=operaiAttivi.filter(o=>o.contratto==='cassa_edile');
-  const metalmeccanici=operaiAttivi.filter(o=>o.contratto==='metalmeccanico');
-  function mc(v,fillRgb,colorRgb,bold,alignH,sz){return{v:(v===undefined||v===null||v==='')?'':v,t:typeof v==='number'?'n':'s',s:{fill:fillRgb?{patternType:'solid',fgColor:{rgb:fillRgb}}:{patternType:'none'},font:{name:'Calibri',sz:sz||10,bold:!!bold,color:{rgb:colorRgb||'111111'}},alignment:{horizontal:alignH||'center',vertical:'center'},border:{top:{style:'thin',color:{rgb:'CCCCCC'}},bottom:{style:'thin',color:{rgb:'CCCCCC'}},left:{style:'thin',color:{rgb:'CCCCCC'}},right:{style:'thin',color:{rgb:'CCCCCC'}}}}};}
-  function sc(ws,r,c,v,fill,color,bold,align,sz){const addr=XLSX.utils.encode_cell({r,c});ws[addr]=mc(v,fill,color,bold,align,sz);const cur=ws['!ref']?XLSX.utils.decode_range(ws['!ref']):{s:{r:9999,c:9999},e:{r:0,c:0}};if(r<cur.s.r)cur.s.r=r;if(c<cur.s.c)cur.s.c=c;if(r>cur.e.r)cur.e.r=r;if(c>cur.e.c)cur.e.c=c;ws['!ref']=XLSX.utils.encode_range(cur);}
-  function buildSintesi(){const ws={'!merges':[],'!rows':[],'!cols':[]};const lista=[...edili,...metalmeccanici];const nC=9;ws['!merges'].push({s:{r:0,c:0},e:{r:0,c:nC-1}});for(let c=0;c<nC;c++)sc(ws,0,c,c===0?`KE CANTIERE — PRESENZE ${monthLabel.toUpperCase()}`:'','0D5C2E','FFFFFF',true,'center',14);ws['!merges'].push({s:{r:1,c:0},e:{r:1,c:nC-1}});for(let c=0;c<nC;c++)sc(ws,1,c,c===0?`Esportato il ${new Date().toLocaleDateString('it-IT')}`:'','1A7A3C','CCFFDD',false,'center',10);for(let c=0;c<nC;c++)sc(ws,2,c,'','F8F8F8','F8F8F8',false,'center',4);const hdrs=['Matr.','Nome','Contratto','Mansione','GG Pres.','GG Ass.','Ore Ord.','Straord.','Ore Tot.'];const hFills=['333333','333333','333333','333333','1A7A3C','7A1A1A','0D5C2E','7A4A00','0A4A24'];hdrs.forEach((h,c)=>sc(ws,3,c,h,hFills[c],'FFFFFF',true,c<4?'left':'center',11));let tP=0,tA=0,tO=0,tS=0;lista.forEach((o,i)=>{const r=4+i;const g=db.giornate.filter(x=>x.operaio===o.id&&x.data.startsWith(monthVal));const pres=g.filter(x=>x.presente);const ass=g.filter(x=>!x.presente);const oreO=pres.reduce((a,x)=>a+(x.ore||0),0);const str=pres.reduce((a,x)=>a+(x.straordinari||0),0);tP+=pres.length;tA+=ass.length;tO+=oreO;tS+=str;const bg=i%2===0?'F4FBF7':'FFFFFF';const bgN=i%2===0?'EAF7EF':'F4FBF7';const isCE=o.contratto==='cassa_edile';sc(ws,r,0,o.matr||'',bg,'888888',false,'center',10);sc(ws,r,1,titleCase(o.name),bg,'111111',true,'left',11);sc(ws,r,2,isCE?'Cassa Edile':'Metalmeccanico',bg,isCE?'1A7A3C':'1E40AF',true,'left',10);sc(ws,r,3,o.mansione||'',bg,'666666',false,'left',10);sc(ws,r,4,pres.length,bgN,pres.length>0?'155724':'888888',pres.length>0,'center',10);sc(ws,r,5,ass.length,bgN,ass.length>0?'B71C1C':'888888',ass.length>0,'center',10);sc(ws,r,6,oreO,bgN,'0D5C2E',oreO>0,'center',10);sc(ws,r,7,str,bgN,str>0?'B45309':'888888',str>0,'center',10);sc(ws,r,8,oreO+str,bgN,'0D5C2E',true,'center',11);});const rT=4+lista.length;sc(ws,rT,0,'','0D5C2E','FFFFFF',true,'center',10);sc(ws,rT,1,'TOTALE','0D5C2E','FFFFFF',true,'left',12);sc(ws,rT,2,'','0D5C2E','FFFFFF',true,'center',10);sc(ws,rT,3,'','0D5C2E','FFFFFF',true,'center',10);sc(ws,rT,4,tP,'0D5C2E','AAFFD0',true,'center',12);sc(ws,rT,5,tA,'0D5C2E','FFB3B3',true,'center',12);sc(ws,rT,6,tO,'0D5C2E','AAFFD0',true,'center',12);sc(ws,rT,7,tS,'0D5C2E',tS>0?'FFD580':'AAFFD0',true,'center',12);sc(ws,rT,8,tO+tS,'0A4A24','FFFFFF',true,'center',13);ws['!rows']=[{hpt:30},{hpt:16},{hpt:6},{hpt:22}];for(let i=0;i<=lista.length;i++)ws['!rows'].push({hpt:20});ws['!cols']=[{wch:7},{wch:32},{wch:16},{wch:18},{wch:11},{wch:11},{wch:11},{wch:11},{wch:11}];return ws;}
-  function buildDettaglio(lista,label){const ws={'!merges':[],'!rows':[],'!cols':[]};const fN=3;const sN=5;const nC=fN+daysInMonth+sN;ws['!merges'].push({s:{r:0,c:0},e:{r:0,c:nC-1}});for(let c=0;c<nC;c++)sc(ws,0,c,c===0?`KE CANTIERE — ${label.toUpperCase()} — ${monthLabel.toUpperCase()}`:'','0D5C2E','FFFFFF',true,'center',13);sc(ws,1,0,'','1E1E1E','1E1E1E',false,'center',8);sc(ws,1,1,'','1E1E1E','1E1E1E',false,'center',8);sc(ws,1,2,'','1E1E1E','1E1E1E',false,'center',8);for(let i=0;i<daysInMonth;i++){const dow=getDow(allDays[i]);const we=dow===0||dow===6;sc(ws,1,fN+i,DOW[dow],we?'5C1A1A':'1E1E1E',we?'FF9999':'999999',true,'center',8);}const sColors=['1A7A3C','7A1A1A','0D5C2E','7A4A00','0A4A24'];for(let i=0;i<sN;i++)sc(ws,1,fN+daysInMonth+i,'',sColors[i],'AAFFD0',true,'center',8);sc(ws,2,0,'Matr.','222222','FFFFFF',true,'center',10);sc(ws,2,1,'Nome','222222','FFFFFF',true,'left',11);sc(ws,2,2,'Mans.','222222','FFFFFF',true,'left',10);for(let i=0;i<daysInMonth;i++){const dow=getDow(allDays[i]);const we=dow===0||dow===6;sc(ws,2,fN+i,i+1,we?'6B2121':'1A7A3C','FFFFFF',true,'center',9);}['P','A','Ore','St.','Tot.'].forEach((lb,i)=>sc(ws,2,fN+daysInMonth+i,lb,sColors[i],'FFFFFF',true,'center',10));const totD=new Array(daysInMonth).fill(0);let tP=0,tA=0,tO=0,tS=0;lista.forEach((o,oi)=>{const r=3+oi;const giornate=db.giornate.filter(g=>g.operaio===o.id&&g.data.startsWith(monthVal));const gg={};giornate.forEach(g=>{gg[g.data]=g;});let gP=0,gA=0,oO=0,oS=0;const bg=oi%2===0?'F9FFFE':'FFFFFF';const bgS=oi%2===0?'EAF7EF':'F4FBF7';sc(ws,r,0,o.matr||'',bg,'999999',false,'center',9);sc(ws,r,1,titleCase(o.name),bg,'111111',true,'left',11);sc(ws,r,2,o.mansione||'',bg,'666666',false,'left',9);for(let i=0;i<daysInMonth;i++){const d=allDays[i];const g=gg[d];const dow=getDow(d);const we=dow===0||dow===6;if(!g){sc(ws,r,fN+i,'',we?'F5E8E8':'F5F5F5',we?'DDAAAA':'DDDDDD',false,'center',9);}else if(g.presente){const h=(g.ore||0)+(g.straordinari||0);gP++;oO+=g.ore||0;oS+=g.straordinari||0;totD[i]+=h;sc(ws,r,fN+i,h,'D4EDDA','155724',true,'center',10);}else{gA++;sc(ws,r,fN+i,(g.motivoTipo||'A').substring(0,1).toUpperCase(),'FDECEA','B71C1C',true,'center',9);}}tP+=gP;tA+=gA;tO+=oO;tS+=oS;sc(ws,r,fN+daysInMonth+0,gP,bgS,gP>0?'155724':'888888',gP>0,'center',10);sc(ws,r,fN+daysInMonth+1,gA,bgS,gA>0?'B71C1C':'888888',gA>0,'center',10);sc(ws,r,fN+daysInMonth+2,oO,bgS,'0D5C2E',oO>0,'center',10);sc(ws,r,fN+daysInMonth+3,oS,bgS,oS>0?'B45309':'888888',oS>0,'center',10);sc(ws,r,fN+daysInMonth+4,oO+oS,bgS,'0D5C2E',true,'center',11);});const rT=3+lista.length;sc(ws,rT,0,'','0D5C2E','FFFFFF',true,'center',10);sc(ws,rT,1,'TOTALE','0D5C2E','FFFFFF',true,'left',12);sc(ws,rT,2,'','0D5C2E','FFFFFF',true,'center',10);for(let i=0;i<daysInMonth;i++){const v=totD[i];sc(ws,rT,fN+i,v>0?v:'','0D5C2E',v>0?'AAFFD0':'4A7A5A',v>0,'center',10);}sc(ws,rT,fN+daysInMonth+0,tP,'0A4A24','AAFFD0',true,'center',12);sc(ws,rT,fN+daysInMonth+1,tA,'0A4A24','FFB3B3',true,'center',12);sc(ws,rT,fN+daysInMonth+2,tO,'0A4A24','AAFFD0',true,'center',12);sc(ws,rT,fN+daysInMonth+3,tS,'0A4A24',tS>0?'FFD580':'AAFFD0',true,'center',12);sc(ws,rT,fN+daysInMonth+4,tO+tS,'071F10','FFFFFF',true,'center',13);ws['!rows']=[{hpt:26},{hpt:13},{hpt:21}];for(let i=0;i<=lista.length;i++)ws['!rows'].push({hpt:19});ws['!cols']=[{wch:6},{wch:28},{wch:12},...allDays.map(()=>({wch:4})),{wch:5},{wch:5},{wch:7},{wch:5},{wch:7}];ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:3+lista.length,c:nC-1}});return ws;}
-  const wb=XLSX.utils.book_new();
-  const wsSin=buildSintesi();wsSin['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:4+operaiAttivi.length,c:8}});
-  XLSX.utils.book_append_sheet(wb,wsSin,'Sintesi');
-  XLSX.utils.book_append_sheet(wb,buildDettaglio(edili,'Cassa Edile'),'Cassa Edile');
-  XLSX.utils.book_append_sheet(wb,buildDettaglio(metalmeccanici,'Metalmeccanico'),'Metalmeccanico');
-  XLSX.writeFile(wb,`Presenze_${monthVal.replace('-','_')}.xlsx`);
-  toast(`✓ Export Presenze_${monthVal.replace('-','_')}.xlsx`);
+async function esportaExcelOperai() {
+  const monthVal = document.getElementById('export-month').value;
+  if (!monthVal) { toast('Seleziona un mese'); return; }
+  try {
+    toast('⏳ Generazione Excel...');
+    const r = await authFetch('/api/export/presenze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ month: monthVal, data: db })
+    });
+    if (!r.ok) { toast('Errore export'); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Presenze_${monthVal.replace('-','_')}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`✓ Export Presenze_${monthVal.replace('-','_')}.xlsx`);
+  } catch(e) { toast('Errore: ' + e.message); }
 }
 
 // ══════════════════════════════════════════

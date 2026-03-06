@@ -22,6 +22,7 @@ async function initDB() {
       data JSONB NOT NULL DEFAULT '{}'
     )
   `);
+  await initDocsTable();
   console.log('[DB] PostgreSQL connesso ✓');
 }
 
@@ -183,23 +184,9 @@ async function writeUsers(users) {
   fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
 }
 
-// ── Upload documenti ──────────────────────────────────────
-const DOCS_DIR = path.join(__dirname, 'uploads', 'documenti');
-if (!fs.existsSync(DOCS_DIR)) fs.mkdirSync(DOCS_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(DOCS_DIR, req.params.operaioId);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_() àèéìòùÀÈÉÌÒÙ]/g, '_');
-    cb(null, `${Date.now()}_${safe}`);
-  }
-});
+// ── Upload documenti (in-memory → PostgreSQL) ────────────
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['application/pdf','image/jpeg','image/png','image/webp',
@@ -208,6 +195,22 @@ const upload = multer({
     cb(null, allowed.includes(file.mimetype));
   }
 });
+
+// Inizializza tabella documenti
+async function initDocsTable() {
+  if (!pool) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS documenti (
+      id          TEXT PRIMARY KEY,
+      operaio_id  TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      mime_type   TEXT,
+      size        INTEGER,
+      data        TEXT NOT NULL,
+      uploaded_at TEXT NOT NULL
+    )
+  `);
+}
 
 // ── App ───────────────────────────────────────────────────
 const app  = express();
@@ -227,7 +230,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 
 // ══════════════════════════════════════════════════════════
 // AUTH ROUTES (pubbliche)
@@ -490,45 +493,68 @@ app.delete('/api/segnalazioni/:id', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Documenti operaio
-app.get('/api/documenti/:operaioId', requireAuth, (req, res) => {
-  const dir = path.join(DOCS_DIR, req.params.operaioId);
-  if (!fs.existsSync(dir)) return res.json([]);
-  const files = fs.readdirSync(dir).map(filename => {
-    const stat = fs.statSync(path.join(dir, filename));
-    return {
-      id: filename,
-      name: filename.replace(/^\d+_/, ''),
-      size: stat.size,
-      uploadedAt: stat.mtime.toISOString(),
-      url: `/uploads/documenti/${req.params.operaioId}/${filename}`
-    };
-  }).sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
-  res.json(files);
+// Documenti operaio — salvati in PostgreSQL
+app.get('/api/documenti/:operaioId', requireAuth, async (req, res) => {
+  try {
+    if (pool) {
+      const r = await pool.query(
+        'SELECT id, name, size, uploaded_at, mime_type FROM documenti WHERE operaio_id=$1 ORDER BY uploaded_at DESC',
+        [req.params.operaioId]
+      );
+      return res.json(r.rows.map(d => ({
+        id: d.id, name: d.name, size: d.size,
+        uploadedAt: d.uploaded_at,
+        url: `/api/documenti/${req.params.operaioId}/${d.id}/download`
+      })));
+    }
+    res.json([]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/documenti/:operaioId', requireAuth, upload.single('file'), (req, res) => {
+
+app.get('/api/documenti/:operaioId/:docId/download', requireAuth, async (req, res) => {
+  try {
+    if (!pool) return res.status(404).json({ error: 'Non disponibile' });
+    const r = await pool.query('SELECT * FROM documenti WHERE id=$1 AND operaio_id=$2', [req.params.docId, req.params.operaioId]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Non trovato' });
+    const doc = r.rows[0];
+    const buf = Buffer.from(doc.data, 'base64');
+    res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${doc.name}"`);
+    res.send(buf);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/documenti/:operaioId', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'File non valido o troppo grande (max 20MB)' });
-  res.json({
-    ok: true, id: req.file.filename,
-    name: req.file.originalname.replace(/[^a-zA-Z0-9.\-_() àèéìòùÀÈÉÌÒÙ]/g, '_'),
-    size: req.file.size,
-    url: `/uploads/documenti/${req.params.operaioId}/${req.file.filename}`
-  });
+  try {
+    const id = Date.now() + '_' + Math.random().toString(16).slice(2,8);
+    const name = req.file.originalname.replace(/[^a-zA-Z0-9.\-_() àèéìòùÀÈÉÌÒÙ]/g, '_');
+    const data = req.file.buffer.toString('base64');
+    const now  = new Date().toISOString();
+    if (pool) {
+      await pool.query(
+        'INSERT INTO documenti (id, operaio_id, name, mime_type, size, data, uploaded_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [id, req.params.operaioId, name, req.file.mimetype, req.file.size, data, now]
+      );
+    }
+    res.json({ ok: true, id, name, size: req.file.size, uploadedAt: now,
+      url: `/api/documenti/${req.params.operaioId}/${id}/download` });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
-app.patch('/api/documenti/:operaioId/:filename', requireAuth, (req, res) => {
-  const dir = path.join(DOCS_DIR, req.params.operaioId);
-  const oldPath = path.join(dir, req.params.filename);
-  if (!fs.existsSync(oldPath)) return res.status(404).json({ error: 'File non trovato' });
-  const ts = req.params.filename.match(/^(\d+)_/)?.[1] || Date.now();
-  const newName = `${ts}_${(req.body.name||'documento').replace(/[^a-zA-Z0-9.\-_() àèéìòùÀÈÉÌÒÙ]/g, '_')}`;
-  fs.renameSync(oldPath, path.join(dir, newName));
-  res.json({ ok: true, id: newName, name: req.body.name });
+
+app.patch('/api/documenti/:operaioId/:docId', requireAuth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'DB non disponibile' });
+    await pool.query('UPDATE documenti SET name=$1 WHERE id=$2 AND operaio_id=$3', [req.body.name, req.params.docId, req.params.operaioId]);
+    res.json({ ok: true, id: req.params.docId, name: req.body.name });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/documenti/:operaioId/:filename', requireAuth, (req, res) => {
-  const filePath = path.join(DOCS_DIR, req.params.operaioId, req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File non trovato' });
-  fs.unlinkSync(filePath);
-  res.json({ ok: true });
+
+app.delete('/api/documenti/:operaioId/:docId', requireAuth, async (req, res) => {
+  try {
+    if (pool) await pool.query('DELETE FROM documenti WHERE id=$1 AND operaio_id=$2', [req.params.docId, req.params.operaioId]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // Catch-all

@@ -1470,7 +1470,7 @@ function uploadDocConNome(cat) { const i=document.getElementById('doc-file-input
 function handleDocFileSelect(files) { const i=document.getElementById('doc-file-input'); const cat=i.getAttribute('data-categoria')||null; i.removeAttribute('data-categoria'); uploadDoc(files,cat&&files.length===1?cat:null); }
 function handleDocDrop(e) { e.preventDefault(); document.getElementById('doc-drop-zone').classList.remove('dragover'); uploadDoc(e.dataTransfer.files,null); }
 async function eliminaDoc(fileId,nome) { if (!confirm(`Eliminare "${nome}"?`)) return; await authFetch(`/api/documenti/${docsOpId}/${encodeURIComponent(fileId)}`,{method:'DELETE'}); await renderDocList(); toast('Documento eliminato'); }
-async async function openDoc(url, name) {
+async function openDoc(url, name) {
   try {
     const r = await authFetch(url);
     const blob = await r.blob();

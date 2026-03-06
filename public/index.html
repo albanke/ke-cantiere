@@ -1451,7 +1451,7 @@ async function renderDocList() {
   try {
     const r=await fetch(`/api/documenti/${docsOpId}`); const docs=await r.json();
     if (!docs.length) { container.innerHTML=`<div class="empty" style="padding:2rem"><div class="empty-icon">📂</div><div class="empty-text">Nessun documento</div></div>`; return; }
-    container.innerHTML=`<div class="doc-list">${docs.map(d=>`<div class="doc-item" id="docitem-${d.id}"><div class="doc-icon">${docIcon(d.name)}</div><div class="doc-info"><div class="doc-name" title="${d.name}">${d.name}</div><div class="doc-meta">${docSize(d.size)} · ${new Date(d.uploadedAt).toLocaleDateString('it-IT')}</div></div><div class="doc-actions"><a href="${d.url}" target="_blank" class="btn btn-ghost btn-sm">👁</a><a href="${d.url}" download="${d.name}" class="btn btn-ghost btn-sm">⬇</a><button class="btn btn-ghost btn-sm" onclick="rinominaDoc('${d.id}','${d.name.replace(/'/g,"\\'")}')">✏</button><button class="btn btn-danger btn-sm" onclick="eliminaDoc('${d.id}','${d.name.replace(/'/g,"\\'")}')">✕</button></div></div>`).join('')}</div>`;
+    container.innerHTML=`<div class="doc-list">${docs.map(d=>`<div class="doc-item" id="docitem-${d.id}"><div class="doc-icon">${docIcon(d.name)}</div><div class="doc-info"><div class="doc-name" title="${d.name}">${d.name}</div><div class="doc-meta">${docSize(d.size)} · ${new Date(d.uploadedAt).toLocaleDateString('it-IT')}</div></div><div class="doc-actions"><button class="btn btn-ghost btn-sm" onclick="openDoc('${d.url}','${d.name.replace(/'/g,"\\'")}')">👁</button><button class="btn btn-ghost btn-sm" onclick="downloadDoc('${d.url}','${d.name.replace(/'/g,"\\'")}')">⬇</button><button class="btn btn-ghost btn-sm" onclick="rinominaDoc('${d.id}','${d.name.replace(/'/g,"\\'")}')">✏</button><button class="btn btn-danger btn-sm" onclick="eliminaDoc('${d.id}','${d.name.replace(/'/g,"\\'")}')">✕</button></div></div>`).join('')}</div>`;
   } catch { container.innerHTML=`<div class="empty" style="padding:2rem;color:var(--red)">Errore caricamento documenti</div>`; }
 }
 async function uploadDoc(files,nomeOverride) {
@@ -1470,7 +1470,25 @@ function uploadDocConNome(cat) { const i=document.getElementById('doc-file-input
 function handleDocFileSelect(files) { const i=document.getElementById('doc-file-input'); const cat=i.getAttribute('data-categoria')||null; i.removeAttribute('data-categoria'); uploadDoc(files,cat&&files.length===1?cat:null); }
 function handleDocDrop(e) { e.preventDefault(); document.getElementById('doc-drop-zone').classList.remove('dragover'); uploadDoc(e.dataTransfer.files,null); }
 async function eliminaDoc(fileId,nome) { if (!confirm(`Eliminare "${nome}"?`)) return; await fetch(`/api/documenti/${docsOpId}/${encodeURIComponent(fileId)}`,{method:'DELETE'}); await renderDocList(); toast('Documento eliminato'); }
-async function rinominaDoc(fileId,nomeAttuale) { const n=prompt('Nuovo nome:',nomeAttuale.replace(/\.[^.]+$/,'')); if (!n||!n.trim()) return; const ext=nomeAttuale.includes('.')?'.'+nomeAttuale.split('.').pop():''; await fetch(`/api/documenti/${docsOpId}/${encodeURIComponent(fileId)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.trim()+ext})}); await renderDocList(); toast('✓ Rinominato'); }
+async async function openDoc(url, name) {
+  try {
+    const r = await authFetch(url);
+    const blob = await r.blob();
+    const objUrl = URL.createObjectURL(blob);
+    window.open(objUrl, '_blank');
+  } catch(e) { toast('Errore apertura documento'); }
+}
+async function downloadDoc(url, name) {
+  try {
+    const r = await authFetch(url);
+    const blob = await r.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl; a.download = name; a.click();
+    URL.revokeObjectURL(objUrl);
+  } catch(e) { toast('Errore download documento'); }
+}
+function rinominaDoc(fileId,nomeAttuale) { const n=prompt('Nuovo nome:',nomeAttuale.replace(/\.[^.]+$/,'')); if (!n||!n.trim()) return; const ext=nomeAttuale.includes('.')?'.'+nomeAttuale.split('.').pop():''; await fetch(`/api/documenti/${docsOpId}/${encodeURIComponent(fileId)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.trim()+ext})}); await renderDocList(); toast('✓ Rinominato'); }
 
 // ══════════════════════════════════════════
 //  RENDICONTO

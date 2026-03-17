@@ -90,6 +90,68 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
 @media(max-width:900px){.login-left{display:none}.login-right{width:100%;padding:30px 20px}}
 
+@media(max-width:600px){
+  /* Sidebar mobile — bottom nav */
+  .sidebar{width:100%!important;height:56px;flex-direction:row;position:fixed;bottom:0;top:auto;left:0;right:0;padding:0 8px;border-right:none;border-top:1px solid var(--border);z-index:200;overflow:visible}
+  .sidebar-logo{display:none}
+  .sidebar-spacer{display:none}
+  .nav-btn{flex-direction:column;gap:2px;padding:6px 4px;align-items:center;justify-content:center;flex:1;border-radius:8px}
+  .nav-btn svg.nav-icon{width:20px;height:20px}
+  .nav-label{opacity:1!important;font-size:9px!important;margin-top:1px}
+  .nav-btn-exit .nav-label{display:none}
+  .nav-btn-exit{max-width:40px}
+
+  /* Main content — account for bottom nav */
+  .main{padding-bottom:56px}
+  .topbar{padding:12px 16px;flex-wrap:wrap;gap:8px}
+  .topbar-title{font-size:16px}
+  .topbar-date{font-size:10px}
+  .content{padding:14px 12px}
+
+  /* Stats grid — 2 colonne su mobile */
+  .stats-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px}
+  .stat-card{padding:14px 12px}
+  .stat-number{font-size:28px}
+  .stat-label{font-size:10px}
+
+  /* Dashboard grid — colonna singola */
+  .dash-grid{grid-template-columns:1fr!important;gap:10px}
+
+  /* Presenze grid — colonna singola */
+  .presenze-grid{grid-template-columns:1fr!important}
+  .presenze-toolbar{flex-direction:column;align-items:stretch;gap:8px}
+  .presenze-toolbar select,.presenze-toolbar input{width:100%}
+
+  /* Cantiere cards — colonna singola */
+  .cantiere-cards{grid-template-columns:1fr!important}
+
+  /* Form grid — colonna singola */
+  .form-grid{grid-template-columns:1fr!important}
+
+  /* Tabelle — scroll orizzontale */
+  .table-wrap{overflow-x:auto}
+  table{min-width:500px}
+  .table-toolbar{flex-direction:column;gap:8px}
+  .table-toolbar .search-box{min-width:unset;width:100%}
+
+  /* Modal — full screen su mobile */
+  .modal-box{width:100%!important;max-width:100%!important;margin:0!important;border-radius:16px 16px 0 0!important;position:fixed!important;bottom:0!important;top:auto!important;max-height:90vh;overflow-y:auto}
+  .modal{align-items:flex-end!important}
+
+  /* Sezione header */
+  .section-header{flex-direction:column;gap:10px}
+  .section-actions{flex-wrap:wrap}
+  .section-title{font-size:20px}
+
+  /* Operai card */
+  .op-card-top{flex-wrap:wrap}
+  .pres-toggle{flex-wrap:wrap}
+
+  /* Bottoni */
+  .btn{padding:8px 14px;font-size:12px}
+  .btn-sm{padding:5px 10px;font-size:11px}
+}
+
 /* ── LAYOUT ── */
 #app{display:none;position:relative;z-index:1}
 #app.visible{display:flex;min-height:100vh}

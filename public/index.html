@@ -416,6 +416,50 @@ select{background:var(--surface-1);border:1px solid var(--border-hi);color:var(-
     max-height:88vh;overflow-y:auto;
   }
 }
+@media(max-width:768px){
+  #app.visible{display:flex;flex-direction:column;min-height:100vh}
+  .sidebar{position:fixed;bottom:0;left:0;right:0;top:auto!important;width:100%!important;height:58px;flex-direction:row;align-items:center;padding:0 4px;gap:0;border-right:none;border-top:1px solid var(--border);z-index:999;overflow:hidden;transition:none!important}
+  .sidebar:hover{width:100%!important}
+  .sidebar-logo{display:none}
+  .sidebar-spacer{flex:1}
+  .nav-btn{flex:1;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px 2px;width:auto;height:54px;border-radius:6px}
+  .nav-btn[style*="display:none"]{display:none!important}
+  .nav-icon{width:19px!important;height:19px!important}
+  .nav-label{opacity:1!important;font-size:9px!important;margin:0;line-height:1}
+  .nav-btn.active::before{top:0;left:4px;right:4px;bottom:auto;width:auto;height:2px;border-radius:0 0 2px 2px}
+  .nav-btn-exit{flex:0 0 42px}
+  .nav-btn-exit .nav-label{display:none}
+  .main{width:100%;padding-bottom:58px;overflow-x:hidden}
+  .topbar{padding:10px 14px;flex-wrap:wrap;gap:6px}
+  .topbar-title{font-size:15px}
+  .topbar-date{font-size:10px}
+  .content{padding:12px 10px}
+  .stats-grid{grid-template-columns:repeat(2,1fr)!important;gap:8px}
+  .stat-number{font-size:24px}
+  .stat-label{font-size:10px}
+  .dash-grid{grid-template-columns:1fr!important}
+  .presenze-grid{grid-template-columns:1fr!important}
+  .cantiere-cards{grid-template-columns:1fr!important}
+  .form-grid{grid-template-columns:1fr!important}
+  .presenze-toolbar{flex-direction:column!important;align-items:stretch!important;gap:10px!important;padding:12px!important}
+  .presenze-toolbar>*{width:100%!important;box-sizing:border-box}
+  .presenze-toolbar input[type="date"],.presenze-toolbar select{width:100%!important;box-sizing:border-box}
+  .presenze-summary{flex-wrap:wrap;gap:6px}
+  .pres-sum-chip{flex:1;min-width:calc(50% - 6px);text-align:center}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{min-width:500px}
+  .table-toolbar{flex-direction:column;gap:8px}
+  .table-toolbar .search-box{width:100%;min-width:unset}
+  .table-toolbar select{width:100%}
+  .section-header{flex-direction:column!important;gap:8px}
+  .section-title{font-size:20px}
+  .section-actions{flex-wrap:wrap;width:100%}
+  .btn{padding:8px 12px;font-size:12px}
+  .btn-sm{padding:5px 9px;font-size:11px}
+  .modal{align-items:flex-end!important}
+  .modal-box{width:100%!important;max-width:100%!important;margin:0!important;border-radius:16px 16px 0 0!important;max-height:88vh;overflow-y:auto}
+}
+
 </style>
 </head>
 <body>
@@ -1164,23 +1208,59 @@ function renderOperai() {
     return true;
   });
   document.getElementById('operai-count').textContent = `${lista.length} operai`;
-  if (!lista.length) { document.getElementById('operai-tbody').innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Nessun operaio trovato</div></div></td></tr>`; return; }
-  document.getElementById('operai-tbody').innerHTML = lista.map(o=>`
-    <tr>
-      <td><div class="matr">${o.matr||'—'}</div></td>
-      <td><span class="operaio-name-link" onclick="apriRendicontoOperaio('${o.id}')">${titleCase(o.name)}</span></td>
-      <td><span class="badge badge-${o.contratto==='cassa_edile'?'amber':'blue'}">${o.contratto==='cassa_edile'?'Cassa Edile':'Metalmeccanico'}</span></td>
-      <td>${o.mansione||'—'}</td>
-      <td>${o.tel||'—'}</td>
-      <td><span class="badge badge-${o.stato==='attivo'?'green':'red'}">${o.stato}</span></td>
-      <td style="display:flex;gap:6px">
-        <button class="btn btn-ghost btn-sm" onclick="apriRendicontoOperaio('${o.id}')">📋</button>
-        <button class="btn btn-ghost btn-sm" onclick="apriDocumentiOperaio('${o.id}','${o.name}')">📁</button>
-        <button class="btn btn-ghost btn-sm" onclick="openModalOperaio('${o.id}')">Modifica</button>
-        <button class="btn btn-danger btn-sm" onclick="eliminaOperaio('${o.id}','${o.name}')">Elimina</button>
-      </td>
-    </tr>
-  `).join('');
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    const wrap = document.querySelector('.table-wrap');
+    let cardsEl = document.getElementById('operai-cards-mobile');
+    if (!cardsEl) {
+      cardsEl = document.createElement('div');
+      cardsEl.id = 'operai-cards-mobile';
+      cardsEl.style.cssText = 'display:flex;flex-direction:column;gap:8px;padding:10px';
+      wrap.parentNode.insertBefore(cardsEl, wrap);
+    }
+    wrap.style.display = 'none';
+    if (!lista.length) { cardsEl.innerHTML = '<div class="empty" style="padding:24px;text-align:center"><div style="font-size:32px">👷</div><div style="color:var(--text-3);margin-top:8px">Nessun operaio trovato</div></div>'; return; }
+    cardsEl.innerHTML = lista.map(o=>`
+      <div style="background:var(--surface-2);border:1px solid var(--border-hi);border-radius:12px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:12px;padding:14px">
+          <div style="width:40px;height:40px;border-radius:50%;background:var(--surface-3);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:var(--green);flex-shrink:0">${titleCase(o.name).charAt(0)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onclick="apriRendicontoOperaio('${o.id}')">${titleCase(o.name)}</div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:2px">Matr. ${o.matr||'—'} · ${o.contratto==='cassa_edile'?'Cassa Edile':'Metalmeccanico'}</div>
+          </div>
+          <span class="badge badge-${o.stato==='attivo'?'green':'red'}" style="flex-shrink:0">${o.stato}</span>
+        </div>
+        <div style="display:flex;gap:6px;padding:0 14px 12px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="apriRendicontoOperaio('${o.id}')">📋 Resoconto</button>
+          <button class="btn btn-ghost btn-sm" onclick="apriDocumentiOperaio('${o.id}','${o.name}')">📁 Documenti</button>
+          <button class="btn btn-ghost btn-sm" onclick="openModalOperaio('${o.id}')">Modifica</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminaOperaio('${o.id}','${o.name}')">Elimina</button>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    const wrap = document.querySelector('.table-wrap');
+    wrap.style.display = '';
+    const cardsEl = document.getElementById('operai-cards-mobile');
+    if (cardsEl) cardsEl.style.display = 'none';
+    if (!lista.length) { document.getElementById('operai-tbody').innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Nessun operaio trovato</div></div></td></tr>`; return; }
+    document.getElementById('operai-tbody').innerHTML = lista.map(o=>`
+      <tr>
+        <td><div class="matr">${o.matr||'—'}</div></td>
+        <td><span class="operaio-name-link" onclick="apriRendicontoOperaio('${o.id}')">${titleCase(o.name)}</span></td>
+        <td><span class="badge badge-${o.contratto==='cassa_edile'?'amber':'blue'}">${o.contratto==='cassa_edile'?'Cassa Edile':'Metalmeccanico'}</span></td>
+        <td>${o.mansione||'—'}</td>
+        <td>${o.tel||'—'}</td>
+        <td><span class="badge badge-${o.stato==='attivo'?'green':'red'}">${o.stato}</span></td>
+        <td style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="apriRendicontoOperaio('${o.id}')">📋</button>
+          <button class="btn btn-ghost btn-sm" onclick="apriDocumentiOperaio('${o.id}','${o.name}')">📁</button>
+          <button class="btn btn-ghost btn-sm" onclick="openModalOperaio('${o.id}')">Modifica</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminaOperaio('${o.id}','${o.name}')">Elimina</button>
+        </td>
+      </tr>
+    `).join('');
+  }
 }
 function eliminaOperaio(id,nome) {
   if (!confirm('Eliminare definitivamente '+titleCase(nome)+'?\nVerranno cancellate anche tutte le sue giornate.')) return;
